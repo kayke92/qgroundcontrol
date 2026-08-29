@@ -251,6 +251,38 @@ void Vehicle::_commonInit(LinkInterface* link)
     connect(_missionManager, &MissionManager::sendComplete,             _trajectoryPoints, &TrajectoryPoints::clear);
     connect(_missionManager, &MissionManager::newMissionItemsAvailable, _trajectoryPoints, &TrajectoryPoints::clear);
 
+    // Automatisch missie verversen na Save WP op RC3
+    _saveWpMissionRefreshTimer.setSingleShot(true);
+    _saveWpMissionRefreshTimer.setInterval(1000);
+
+    connect(&_saveWpMissionRefreshTimer, &QTimer::timeout, this, [this]() {
+        if (!apmFirmware() || !rover() || !_armed || !_missionManager) {
+            return;
+        }
+
+        if (_missionManager->inProgress()) {
+            _saveWpMissionRefreshTimer.start(500);
+            return;
+        }
+
+        _missionManager->loadFromVehicle();
+    });
+
+    connect(this, &Vehicle::rcChannelsClampedChanged, this,
+            [this](QVector<int> channelValues) {
+        if (!apmFirmware() || !rover() || channelValues.size() < 3) {
+            return;
+        }
+
+        const bool rc3High = channelValues[2] >= 1800;
+
+        if (rc3High && !_saveWpRc3High && _armed) {
+            _saveWpMissionRefreshTimer.start();
+        }
+
+        _saveWpRc3High = rc3High;
+    });
+
     _standardModes                  = new StandardModes                 (this, this);
     _componentInformationManager    = new ComponentInformationManager   (this, this);
     _initialConnectStateMachine     = new InitialConnectStateMachine    (this, this);

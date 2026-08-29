@@ -927,6 +927,8 @@ private:
     bool                _soloFirmware = false;
 
     QTimer              _csvLogTimer;
+    QTimer              _saveWpMissionRefreshTimer;
+    bool                _saveWpRc3High = false;
     QFile               _csvLogFile;
 
     bool _isActiveVehicle = false;
