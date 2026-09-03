@@ -8,6 +8,8 @@ Item {
     readonly property string initState:             "init"
     readonly property string pipState:              "pip"
     readonly property string fullState:             "full"
+    readonly property string splitLeftState:        "splitLeft"
+    readonly property string splitRightState:       "splitRight"
     readonly property string windowState:           "window"
 
     property var  pipView           // PipView control
@@ -46,6 +48,34 @@ Item {
                 anchors.right:  pipView.parent.right
             }
 
+            ParentChange {
+                target: _viewControl
+                parent: pipView.parent
+            }
+        },
+        State {
+            name: splitLeftState
+            AnchorChanges {
+                target:         _viewControl
+                anchors.top:    pipView.parent.top
+                anchors.bottom: pipView.parent.bottom
+                anchors.left:   pipView.parent.left
+                anchors.right:  pipView.parent.horizontalCenter
+            }
+            ParentChange {
+                target: _viewControl
+                parent: pipView.parent
+            }
+        },
+        State {
+            name: splitRightState
+            AnchorChanges {
+                target:         _viewControl
+                anchors.top:    pipView.parent.top
+                anchors.bottom: pipView.parent.bottom
+                anchors.left:   pipView.parent.horizontalCenter
+                anchors.right:  pipView.parent.right
+            }
             ParentChange {
                 target: _viewControl
                 parent: pipView.parent

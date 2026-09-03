@@ -31,7 +31,8 @@ Item {
         Component.onCompleted:  start()
     }
 
-    property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
+    property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState ||
+                                             mapControl.pipState.state === mapControl.pipState.splitLeftState
     property bool   _isFullWindowItemDark:  _mainWindowIsMap ? mapControl.isSatelliteMap : true
     property var    _activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
     property var    _missionController:     _planController.missionController
@@ -77,7 +78,7 @@ Item {
             planMasterController:   _planController
             rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
             pipView:                _pipView
-            pipMode:                !_mainWindowIsMap
+            pipMode:                mapControl.pipState.state === mapControl.pipState.pipState
             toolInsets:             customOverlay.totalToolInsets
             mapName:                "FlightDisplayView"
             enabled:                !_is3DMode
@@ -85,8 +86,13 @@ Item {
         }
 
         FlyViewVideo {
-            id:         videoControl
-            pipView:    _pipView
+            id:                         videoControl
+            pipView:                    _pipView
+            carpcatcherSplitMode:       _pipView.splitMode
+            onCarpcatcherDoubleClicked: {
+                _pipView.toggleSplitItem(videoControl)
+                QGroundControl.videoManager.fullScreen = _pipView.splitFullItem === 2
+            }
         }
 
         PipView {
@@ -94,6 +100,8 @@ Item {
             anchors.left:           parent.left
             anchors.bottom:         parent.bottom
             anchors.margins:        _toolsMargin
+            splitMode:              QGroundControl.videoManager.hasVideo
+            splitFullItem:          0
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
