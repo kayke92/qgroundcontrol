@@ -8,6 +8,8 @@ Item {
 
     property Item pipView
     property Item pipState: videoPipState
+    property bool carpcatcherSplitMode: false
+    signal carpcatcherDoubleClicked()
 
     PipState {
         id:         videoPipState
@@ -85,7 +87,7 @@ Item {
     MouseArea {
         id:                         flyViewVideoMouseArea
         anchors.fill:               parent
-        enabled:                    pipState.state === pipState.fullState
+        enabled:                    pipState.state === pipState.fullState || _root.carpcatcherSplitMode
 
         property real _pressX:      0
         property real _pressY:      0
@@ -114,7 +116,11 @@ Item {
             // onReleased, so flag it to prevent re-arming the single-click timer.
             _doubleClicked = true
             singleClickTimer.stop()
-            QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
+            if (_root.carpcatcherSplitMode) {
+                _root.carpcatcherDoubleClicked()
+            } else {
+                QGroundControl.videoManager.fullScreen = !QGroundControl.videoManager.fullScreen
+            }
         }
 
         onPressed: (mouse) => {

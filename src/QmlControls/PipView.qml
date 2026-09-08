@@ -8,12 +8,14 @@ Item {
     id:         _root
     width:      _pipSize
     height:     _pipSize * (9/16)
-    visible:    item2 && item2.pipState !== item2.pipState.window && show
+    visible:    !splitMode && item2 && item2.pipState !== item2.pipState.window && show
 
     property var    item1:                  null    // Required
     property var    item2:                  null    // Optional, may come and go
     property string item1IsFullSettingsKey          // Settings key to save whether item1 was saved in full mode
     property bool   show:                   true
+    property bool   splitMode:              false
+    property int    splitFullItem:          0   // 0=split, 1=item1 full, 2=item2 full
 
     readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
 
@@ -33,6 +35,49 @@ Item {
     }
 
     onItem2Changed: _initForItems()
+    onSplitModeChanged: _initForItems()
+    onSplitFullItemChanged: {
+        if (splitMode) {
+            _applySplitLayout()
+        }
+    }
+
+    function _applySplitLayout() {
+        if (!item1 || !item2) {
+            return
+        }
+        if (splitFullItem === 1) {
+            item1.visible = true
+            item2.visible = false
+            item1.pipState.state = item1.pipState.fullState
+            _fullItem = item1
+            _pipOrWindowItem = item2
+        } else if (splitFullItem === 2) {
+            item1.visible = false
+            item2.visible = true
+            item2.pipState.state = item2.pipState.fullState
+            _fullItem = item2
+            _pipOrWindowItem = item1
+        } else {
+            item1.visible = true
+            item2.visible = true
+            item1.pipState.state = item1.pipState.splitLeftState
+            item2.pipState.state = item2.pipState.splitRightState
+            _fullItem = item1
+            _pipOrWindowItem = item2
+        }
+    }
+
+    function toggleSplitItem(item) {
+        if (!splitMode || !item1 || !item2) {
+            return
+        }
+        if (splitFullItem === 0) {
+            splitFullItem = (item === item1) ? 1 : 2
+        } else {
+            splitFullItem = 0
+        }
+    }
 
     function showWindow() {
         window.width = _root.width
@@ -41,6 +86,10 @@ Item {
     }
 
     function _initForItems() {
+        if (splitMode && item1 && item2) {
+            _applySplitLayout()
+            return
+        }
         var item1IsFull = QGroundControl.loadBoolGlobalSetting(item1IsFullSettingsKey, true)
         if (item1 && item2) {
             item1.pipState.state = item1IsFull ? item1.pipState.fullState : item1.pipState.pipState

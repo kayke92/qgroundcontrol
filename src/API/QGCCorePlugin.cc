@@ -88,6 +88,11 @@ const QVariantList &QGCCorePlugin::analyzePages()
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/MAVLinkInspector.svg")))),
 #endif
         QVariant::fromValue(new QmlComponentInfo(
+            tr("Sonar Lab"),
+            QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/SonarLab/SonarLabPage.qml")),
+            QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/SonarLabIcon.svg")))),
+
+        QVariant::fromValue(new QmlComponentInfo(
             tr("Onboard Logs"),
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/OnboardLogs/OnboardLogPage.qml")),
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/OnboardLogIcon.svg")),
