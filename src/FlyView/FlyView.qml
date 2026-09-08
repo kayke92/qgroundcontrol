@@ -131,7 +131,7 @@ Item {
             parentToolInsets:       _toolInsets
             mapControl:             _mapControl
             viewer3DCameraController: viewer3DLoader.item ? viewer3DLoader.item.cameraController : null
-            visible:                !QGroundControl.videoManager.fullScreen
+            visible: false
         }
 
         FlyViewCustomLayer {
@@ -140,7 +140,7 @@ Item {
             z:                  _fullItemZorder + 2
             parentToolInsets:   widgetLayer.totalToolInsets
             mapControl:         _mapControl
-            visible:            !QGroundControl.videoManager.fullScreen
+            visible: false
         }
 
         // Development tool for visualizing the insets for a paticular layer, show if needed
@@ -241,6 +241,6 @@ Item {
     FlyViewToolBar {
         id:                 toolbar
         guidedValueSlider:  _guidedValueSlider
-        visible:            !QGroundControl.videoManager.fullScreen && !_carpcatcherSonarFullScreen
+        visible: !QGroundControl.videoManager.fullScreen && !_carpcatcherSonarFullScreen
     }
 }

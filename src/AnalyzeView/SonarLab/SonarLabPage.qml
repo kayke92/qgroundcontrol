@@ -4,86 +4,84 @@ import QtQuick.Layouts
 
 Item {
     id: root
-    anchors.fill: parent
+
     property real depth: 4.7
-    property real waterTemp: 18.4
-    property real signalQuality: 92
+    property real temp: 18.4
+    property real signal: 92
     property real phase: 0
 
-    Rectangle { anchors.fill: parent; color: "#0b0f13" }
+    Rectangle {
+        anchors.fill: parent
+        color: "#080b0e"
+    }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 10
+        anchors.margins: 5
+        spacing: 4
 
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.max(58, root.height * 0.13)
+            Layout.preferredHeight: Math.max(38, Math.min(52, root.height * 0.14))
+            radius: 3
+            color: "#10161b"
+            border.color: "#38434c"
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Text {
-                    text: "CARPCATCHER SONAR"
-                    color: "#ff7a00"
-                    font.bold: true
-                    font.pixelSize: Math.max(22, root.height * 0.045)
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 4
+                spacing: 4
+
+                Repeater {
+                    model: [
+                        { t: "DIEPTE", value: root.depth.toFixed(1) + " m" },
+                        { t: "TEMP", value: root.temp.toFixed(1) + " °C" },
+                        { t: "SIGNAAL", value: Math.round(root.signal) + " %" }
+                    ]
+
+                    delegate: Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 2
+                        color: "#171e24"
+                        border.color: "#35404a"
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: modelData.t
+                                color: "#9ca8b2"
+                                font.bold: true
+                                font.pixelSize: Math.max(8, Math.min(11, root.height * 0.023))
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: modelData.value
+                                color: "white"
+                                font.bold: true
+                                font.pixelSize: Math.max(14, Math.min(20, root.height * 0.041))
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
                 }
-                Text {
-                    text: "Carpcatcher Control • simulatie"
-                    color: "#9aa5af"
-                    font.pixelSize: Math.max(12, root.height * 0.02)
-                }
-            }
 
-            Rectangle {
-                Layout.preferredWidth: Math.max(110, root.width * 0.16)
-                Layout.preferredHeight: Math.max(36, root.height * 0.06)
-                radius: height / 2
-                color: "#24140a"
-                border.color: "#ff7a00"
-                Text {
-                    anchors.centerIn: parent
-                    text: "SIMULATIE"
-                    color: "#ff7a00"
-                    font.bold: true
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.max(76, root.height * 0.18)
-            spacing: 10
-
-            Repeater {
-                model: [
-                    {label:"DIEPTE", value: root.depth.toFixed(1) + " m"},
-                    {label:"WATERTEMP.", value: root.waterTemp.toFixed(1) + " °C"},
-                    {label:"SIGNAAL", value: Math.round(root.signalQuality) + " %"}
-                ]
-                delegate: Rectangle {
-                    Layout.fillWidth: true
+                Rectangle {
+                    Layout.preferredWidth: Math.max(76, root.width * 0.105)
                     Layout.fillHeight: true
-                    radius: 8
-                    color: "#141a20"
-                    border.color: "#2a323a"
-                    Column {
+                    radius: 2
+                    color: "#251408"
+                    border.color: "#ff7a00"
+
+                    Text {
                         anchors.centerIn: parent
-                        spacing: 3
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.label
-                            color: "#8e99a4"
-                            font.pixelSize: Math.max(11, root.height * 0.02)
-                        }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.value
-                            color: "white"
-                            font.bold: true
-                            font.pixelSize: Math.max(24, root.height * 0.05)
-                        }
+                        text: "SIMULATIE"
+                        color: "#ff7a00"
+                        font.bold: true
+                        font.pixelSize: Math.max(8, Math.min(11, root.height * 0.022))
                     }
                 }
             }
@@ -92,96 +90,132 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 8
-            color: "#05080b"
-            border.color: "#2a323a"
+            radius: 3
+            color: "#030609"
+            border.color: "#303942"
             clip: true
 
             Canvas {
-                id: sonarCanvas
+                id: canvas
                 anchors.fill: parent
-                anchors.margins: 8
+                anchors.rightMargin: 42
+                anchors.margins: 4
 
                 onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
+                    var c = getContext("2d")
+                    c.clearRect(0, 0, width, height)
 
-                    ctx.strokeStyle = "#1f2b35"
-                    ctx.lineWidth = 1
+                    c.strokeStyle = "#17232d"
+                    c.lineWidth = 1
                     for (var i = 0; i <= 5; i++) {
-                        var gy = i * height / 5
-                        ctx.beginPath()
-                        ctx.moveTo(0, gy)
-                        ctx.lineTo(width, gy)
-                        ctx.stroke()
+                        var y = i * height / 5
+                        c.beginPath()
+                        c.moveTo(0, y)
+                        c.lineTo(width, y)
+                        c.stroke()
                     }
 
-                    for (var x = 0; x < width; x += 7) {
-                        var y = height * (0.46 + 0.03 * Math.sin((x + root.phase * 20) / 35))
-                        ctx.fillStyle = "#155181"
-                        ctx.fillRect(x, y - 24, 2, 2)
-                    }
-
-                    var fx = [width*0.23, width*0.49, width*0.72]
-                    var fy = [height*0.40, height*0.31, height*0.47]
-                    for (var f = 0; f < fx.length; f++) {
-                        ctx.strokeStyle = "#ffb000"
-                        ctx.lineWidth = 3
-                        ctx.beginPath()
-                        ctx.arc(fx[f], fy[f], 10 + f*2, Math.PI, Math.PI*2)
-                        ctx.stroke()
+                    var fx = [0.18, 0.35, 0.58, 0.77]
+                    var fy = [0.31, 0.43, 0.27, 0.48]
+                    for (var f = 0; f < 4; f++) {
+                        c.strokeStyle = f === 2 ? "#ffd23f" : "#ff8a00"
+                        c.lineWidth = 3
+                        c.beginPath()
+                        c.arc(width * fx[f], height * fy[f], 8 + f * 2, Math.PI, Math.PI * 2)
+                        c.stroke()
                     }
 
                     var pts = []
-                    for (var bx = 0; bx <= width; bx += 5) {
-                        var by = height * (0.70 + 0.06*Math.sin((bx + root.phase*10)/85) + 0.025*Math.sin(bx/29))
-                        pts.push([bx, by])
+                    for (var x = 0; x <= width; x += 4) {
+                        var by = height * (
+                            0.73 +
+                            0.055 * Math.sin((x + root.phase * 8) / 92) +
+                            0.022 * Math.sin(x / 29)
+                        )
+                        pts.push([x, by])
                     }
 
-                    var grad = ctx.createLinearGradient(0, height*0.55, 0, height)
-                    grad.addColorStop(0, "#ff7a00")
-                    grad.addColorStop(0.35, "#d93b00")
-                    grad.addColorStop(1, "#471000")
-                    ctx.fillStyle = grad
-                    ctx.beginPath()
-                    ctx.moveTo(0, height)
-                    for (var p = 0; p < pts.length; p++) ctx.lineTo(pts[p][0], pts[p][1])
-                    ctx.lineTo(width, height)
-                    ctx.closePath()
-                    ctx.fill()
+                    var g = c.createLinearGradient(0, height * 0.60, 0, height)
+                    g.addColorStop(0, "#ffd23f")
+                    g.addColorStop(0.08, "#ff8a00")
+                    g.addColorStop(0.25, "#d84a00")
+                    g.addColorStop(1, "#351008")
 
-                    ctx.strokeStyle = "#ffd23f"
-                    ctx.lineWidth = 2
-                    ctx.beginPath()
+                    c.fillStyle = g
+                    c.beginPath()
+                    c.moveTo(0, height)
+                    for (var p = 0; p < pts.length; p++)
+                        c.lineTo(pts[p][0], pts[p][1])
+                    c.lineTo(width, height)
+                    c.closePath()
+                    c.fill()
+
+                    c.strokeStyle = "#ffe15a"
+                    c.lineWidth = 2
+                    c.beginPath()
                     for (var q = 0; q < pts.length; q++) {
-                        if (q === 0) ctx.moveTo(pts[q][0], pts[q][1])
-                        else ctx.lineTo(pts[q][0], pts[q][1])
+                        if (q === 0)
+                            c.moveTo(pts[q][0], pts[q][1])
+                        else
+                            c.lineTo(pts[q][0], pts[q][1])
                     }
-                    ctx.stroke()
+                    c.stroke()
                 }
             }
-        }
 
-        Text {
-            Layout.fillWidth: true
-            text: "Echte Kogger-data wordt later hier gekoppeld."
-            color: "#73808b"
-            horizontalAlignment: Text.AlignHCenter
-            font.pixelSize: Math.max(11, root.height * 0.018)
+            Column {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.margins: 5
+                width: 34
+
+                Repeater {
+                    model: ["0", "2", "4", "6", "8", "10m"]
+
+                    delegate: Text {
+                        width: 34
+                        height: parent.height / 6
+                        text: modelData
+                        color: "#aeb7c0"
+                        horizontalAlignment: Text.AlignRight
+                        font.pixelSize: Math.max(8, Math.min(11, root.height * 0.021))
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: 7
+                width: sonarTitle.implicitWidth + 12
+                height: sonarTitle.implicitHeight + 7
+                radius: 2
+                color: "#bb11171d"
+
+                Text {
+                    id: sonarTitle
+                    anchors.centerIn: parent
+                    text: "CARPCATCHER SONAR"
+                    color: "#ff7a00"
+                    font.bold: true
+                    font.pixelSize: Math.max(9, Math.min(13, root.height * 0.025))
+                }
+            }
         }
     }
 
     Timer {
-        interval: 180
+        interval: 160
         repeat: true
         running: true
+
         onTriggered: {
-            root.phase += 0.18
+            root.phase += 0.16
             root.depth = 4.7 + 0.12 * Math.sin(root.phase / 2.2)
-            root.waterTemp = 18.4 + 0.05 * Math.sin(root.phase / 6)
-            root.signalQuality = 92 + 3 * Math.sin(root.phase / 3.5)
-            sonarCanvas.requestPaint()
+            root.temp = 18.4 + 0.05 * Math.sin(root.phase / 6)
+            root.signal = 92 + 3 * Math.sin(root.phase / 3.5)
+            canvas.requestPaint()
         }
     }
 }
-
