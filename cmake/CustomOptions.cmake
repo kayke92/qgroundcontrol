@@ -14,7 +14,7 @@ set(QGC_CUSTOM_DIR "custom" CACHE STRING "Custom build overlay directory, relati
 # Application Metadata
 # ============================================================================
 
-set(QGC_APP_NAME "Carpcatcher Control" CACHE STRING "Application name")
+set(QGC_APP_NAME "QGroundControl" CACHE STRING "Application name")
 string(TIMESTAMP _copyright_year "%Y")
 set(QGC_APP_COPYRIGHT "Copyright (c) ${_copyright_year} QGroundControl. All rights reserved." CACHE STRING "Copyright notice")
 set(QGC_APP_DESCRIPTION "Open Source Ground Control App" CACHE STRING "Application description")
