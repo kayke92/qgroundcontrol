@@ -31,7 +31,8 @@ Item {
         Component.onCompleted:  start()
     }
 
-    property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
+    property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState ||
+                                             mapControl.pipState.state === mapControl.pipState.splitLeftState
     property bool   _isFullWindowItemDark:  _mainWindowIsMap ? mapControl.isSatelliteMap : true
     property var    _activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
     property var    _missionController:     _planController.missionController
@@ -49,6 +50,8 @@ Item {
 
     property real   _fullItemZorder:    0
     property real   _pipItemZorder:     QGroundControl.zOrderWidgets
+    property bool   _carpcatcherSonarFullScreen: false
+    readonly property bool _carpcatcherVideoFullScreen: QGroundControl.videoManager.fullScreen
 
     function _calcCenterViewPort() {
         var newToolInset = Qt.rect(0, 0, width, height)
@@ -70,14 +73,18 @@ Item {
 
     Item {
         id:                 mapHolder
-        anchors.fill:       parent
+        anchors.left:       parent.left
+        anchors.right:      parent.right
+        anchors.top:        parent.top
+        anchors.bottom:     (_carpcatcherSonarFullScreen || _carpcatcherVideoFullScreen) ? parent.bottom : sonarPanel.top
+        visible:            !_carpcatcherSonarFullScreen
 
         FlyViewMap {
             id:                     mapControl
             planMasterController:   _planController
             rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
             pipView:                _pipView
-            pipMode:                !_mainWindowIsMap
+            pipMode:                mapControl.pipState.state === mapControl.pipState.pipState
             toolInsets:             customOverlay.totalToolInsets
             mapName:                "FlightDisplayView"
             enabled:                !_is3DMode
@@ -85,8 +92,13 @@ Item {
         }
 
         FlyViewVideo {
-            id:         videoControl
-            pipView:    _pipView
+            id:                         videoControl
+            pipView:                    _pipView
+            carpcatcherSplitMode:       _pipView.splitMode
+            onCarpcatcherDoubleClicked: {
+                _pipView.toggleSplitItem(videoControl)
+                QGroundControl.videoManager.fullScreen = _pipView.splitFullItem === 2
+            }
         }
 
         PipView {
@@ -94,6 +106,8 @@ Item {
             anchors.left:           parent.left
             anchors.bottom:         parent.bottom
             anchors.margins:        _toolsMargin
+            splitMode:              QGroundControl.videoManager.hasVideo
+            splitFullItem:          0
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
@@ -179,9 +193,54 @@ Item {
         }
     }
 
+
+    Rectangle {
+        id:                 sonarPanel
+        anchors.left:       parent.left
+        anchors.right:      parent.right
+        anchors.bottom:     parent.bottom
+        height:             _carpcatcherSonarFullScreen ? parent.height : parent.height * 0.38
+        z:                  _carpcatcherSonarFullScreen ? QGroundControl.zOrderTopMost : (_fullItemZorder + 1)
+        visible:            !_carpcatcherVideoFullScreen
+        color:              "#0b0f13"
+        border.color:       "#2a323a"
+        border.width:       1
+
+        Loader {
+            id:             carpcatcherSonarLoader
+            anchors.fill:   parent
+            source:         "qrc:/qml/QGroundControl/AnalyzeView/SonarLab/SonarLabPage.qml"
+        }
+
+        Rectangle {
+            anchors.right:      parent.right
+            anchors.top:        parent.top
+            anchors.margins:    8
+            width:              42
+            height:             34
+            radius:             6
+            color:              "#cc11171d"
+            border.color:       "#ff7a00"
+            z:                  20
+
+            Text {
+                anchors.centerIn: parent
+                text: _carpcatcherSonarFullScreen ? "↙" : "↗"
+                color: "white"
+                font.bold: true
+                font.pixelSize: 20
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: _carpcatcherSonarFullScreen = !_carpcatcherSonarFullScreen
+            }
+        }
+    }
+
     FlyViewToolBar {
         id:                 toolbar
         guidedValueSlider:  _guidedValueSlider
-        visible:            !QGroundControl.videoManager.fullScreen
+        visible:            !QGroundControl.videoManager.fullScreen && !_carpcatcherSonarFullScreen
     }
 }

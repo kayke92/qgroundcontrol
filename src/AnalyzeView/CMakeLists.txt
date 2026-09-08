@@ -23,6 +23,7 @@ qt_add_qml_module(AnalyzeViewModule
     QML_FILES
         AnalyzePage.qml
         AnalyzeView.qml
+        SonarLab/SonarLabPage.qml
         MAVLinkConsole/MAVLinkConsolePage.qml
         MAVLinkInspector/MAVLinkChart.qml
         MAVLinkInspector/MAVLinkMessageButton.qml
@@ -43,6 +44,9 @@ set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkInspector/MAVLin
     PROPERTIES QT_RESOURCE_ALIAS "MAVLinkInspector.svg")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/OnboardLogs/OnboardLogIcon.svg"
     PROPERTIES QT_RESOURCE_ALIAS "OnboardLogIcon.svg")
+
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/SonarLab/SonarLabIcon.svg"
+    PROPERTIES QT_RESOURCE_ALIAS "SonarLabIcon.svg")
 set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/Vibration/VibrationPageIcon.png"
     PROPERTIES QT_RESOURCE_ALIAS "VibrationPageIcon")
 
@@ -55,5 +59,6 @@ qt_add_resources(${CMAKE_PROJECT_NAME} analyzeview_qmlimages
         "${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkConsole/MAVLinkConsoleIcon.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/MAVLinkInspector/MAVLinkInspector.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/OnboardLogs/OnboardLogIcon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/SonarLab/SonarLabIcon.svg"
         "${CMAKE_CURRENT_SOURCE_DIR}/Vibration/VibrationPageIcon.png"
 )
