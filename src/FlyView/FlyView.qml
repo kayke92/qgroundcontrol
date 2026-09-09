@@ -33,7 +33,9 @@ Item {
     readonly property bool _carpcatcherShowMapArea: _carpcatcherViewMode !== 2
     readonly property real _carpcatcherContentTop: modeBar.y + modeBar.height
     readonly property real _carpcatcherContentHeight: Math.max(0, height - _carpcatcherContentTop)
-    readonly property real _carpcatcherSonarHeight: _carpcatcherViewMode === 2
+    readonly property real _carpcatcherSonarHeight: (_carpcatcherViewMode === 2 ||
+                                                       _carpcatcherViewMode === 4 ||
+                                                       _carpcatcherViewMode === 5)
                                                       ? _carpcatcherContentHeight
                                                       : (_carpcatcherShowSonar ? _carpcatcherContentHeight * 0.44 : 0)
 
@@ -297,9 +299,11 @@ Item {
         id: mapHolder
         x: 0
         y: _carpcatcherContentTop
-        width: parent.width
+        width: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.45 : parent.width
         height: _carpcatcherShowMapArea
-                  ? Math.max(0, _carpcatcherContentHeight - _carpcatcherSonarHeight)
+                  ? ((_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5)
+                       ? _carpcatcherContentHeight
+                       : Math.max(0, _carpcatcherContentHeight - _carpcatcherSonarHeight))
                   : 0
         visible: _carpcatcherShowMapArea && height > 0
         clip: true
@@ -618,11 +622,11 @@ Item {
     // ---------------------------------------------------------------------
     Rectangle {
         id: sonarPanel
-        x: 0
-        y: _carpcatcherViewMode === 2
+        x: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.45 : 0
+        y: (_carpcatcherViewMode === 2 || _carpcatcherViewMode === 4 || _carpcatcherViewMode === 5)
              ? _carpcatcherContentTop
              : (_carpcatcherContentTop + (_carpcatcherContentHeight - _carpcatcherSonarHeight))
-        width: parent.width
+        width: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.55 : parent.width
         height: _carpcatcherSonarHeight
         visible: _carpcatcherShowSonar && height > 0
         z: QGroundControl.zOrderWidgets + 3
