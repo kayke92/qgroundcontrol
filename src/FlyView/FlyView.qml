@@ -51,7 +51,6 @@ Item {
     property real   _fullItemZorder:    0
     property real   _pipItemZorder:     QGroundControl.zOrderWidgets
     property bool   _carpcatcherSonarFullScreen: false
-    readonly property bool _carpcatcherVideoFullScreen: QGroundControl.videoManager.fullScreen
 
     function _calcCenterViewPort() {
         var newToolInset = Qt.rect(0, 0, width, height)
@@ -72,15 +71,27 @@ Item {
     }
 
     Item {
+    readonly property bool _carpcatcherMapFullScreen: _pipView.splitMode && _pipView.splitFullItem === 1
+    readonly property bool _carpcatcherCameraFullScreen: _pipView.splitMode && _pipView.splitFullItem === 2
         id:                 mapHolder
         anchors.left:       parent.left
         anchors.right:      parent.right
         anchors.top:        parent.top
-        anchors.bottom:     (_carpcatcherSonarFullScreen || _carpcatcherVideoFullScreen) ? parent.bottom : sonarPanel.top
+        anchors.bottom: (_carpcatcherMapFullScreen || _carpcatcherCameraFullScreen) ? parent.bottom : sonarPanel.top
         visible:            !_carpcatcherSonarFullScreen
 
         FlyViewMap {
             id:                     mapControl
+
+        TapHandler {
+            id: carpcatcherMapDoubleTap
+            acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.DragThreshold
+            onDoubleTapped: {
+                if (_carpcatcherSonarFullScreen) _carpcatcherSonarFullScreen = false
+                _pipView.toggleSplitItem(mapControl)
+            }
+        }
             planMasterController:   _planController
             rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
             pipView:                _pipView
@@ -96,9 +107,9 @@ Item {
             pipView:                    _pipView
             carpcatcherSplitMode:       _pipView.splitMode
             onCarpcatcherDoubleClicked: {
-                _pipView.toggleSplitItem(videoControl)
-                QGroundControl.videoManager.fullScreen = _pipView.splitFullItem === 2
-            }
+            if (_carpcatcherSonarFullScreen) _carpcatcherSonarFullScreen = false
+            _pipView.toggleSplitItem(videoControl)
+        }
         }
 
         PipView {
@@ -201,7 +212,7 @@ Item {
         anchors.bottom:     parent.bottom
         height:             _carpcatcherSonarFullScreen ? parent.height : parent.height * 0.38
         z:                  _carpcatcherSonarFullScreen ? QGroundControl.zOrderTopMost : (_fullItemZorder + 1)
-        visible:            !_carpcatcherVideoFullScreen
+        visible: _carpcatcherSonarFullScreen || (!_carpcatcherMapFullScreen && !_carpcatcherCameraFullScreen)
         color:              "#0b0f13"
         border.color:       "#2a323a"
         border.width:       1
