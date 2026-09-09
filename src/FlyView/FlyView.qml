@@ -67,6 +67,92 @@ Item {
     property real   _fullItemZorder:    0
     property real   _pipItemZorder:     QGroundControl.zOrderWidgets
 
+    // ---------------------------------------------------------------------
+    // CARPCATCHER LIVECHART BASIS
+    // ---------------------------------------------------------------------
+    property bool   _bathymetryRecording:       false
+    property bool   _bathymetryDemoMode:        true
+    property real   _liveDepthMeters:           4.80
+    property real   _liveWaterTemperature:      16.8
+    property int    _bathymetrySampleInterval:  900
+    property int    _bathymetryMaxSamples:      2500
+
+    ListModel {
+        id: bathymetrySamples
+    }
+
+    function _depthColor(depth) {
+        if (depth < 1.0) return "#e53935"   // rood
+        if (depth < 2.0) return "#fb8c00"   // oranje
+        if (depth < 3.0) return "#fdd835"   // geel
+        if (depth < 4.0) return "#43a047"   // groen
+        if (depth < 5.0) return "#29b6f6"   // lichtblauw
+        return "#1565c0"                    // donkerblauw
+    }
+
+    function _recordBathymetrySample() {
+        if (!_bathymetryRecording || !mapControl) {
+            return
+        }
+
+        var coordinate = mapControl.center
+        var usingVehicleGps = false
+
+        if (_activeVehicle && _activeVehicle.coordinate && _activeVehicle.coordinate.isValid) {
+            coordinate = _activeVehicle.coordinate
+            usingVehicleGps = true
+        }
+
+        // Zonder Pixhawk/Kogger bouwen we alvast een zichtbare demo rondom
+        // het kaartcentrum. Zodra de echte GPS beschikbaar is gebruiken we
+        // automatisch de voertuigpositie.
+        var latitude = coordinate.latitude
+        var longitude = coordinate.longitude
+        var index = bathymetrySamples.count
+
+        if (!usingVehicleGps) {
+            var ring = Math.floor(index / 18) + 1
+            var angle = (index % 18) * (Math.PI * 2 / 18)
+            var radius = ring * 0.000035
+            latitude += Math.sin(angle) * radius
+            longitude += Math.cos(angle) * radius
+        }
+
+        if (bathymetrySamples.count >= _bathymetryMaxSamples) {
+            bathymetrySamples.remove(0, 1)
+        }
+
+        bathymetrySamples.append({
+            "latitude": latitude,
+            "longitude": longitude,
+            "depth": _liveDepthMeters,
+            "temperature": _liveWaterTemperature,
+            "timestampMs": Date.now()
+        })
+    }
+
+    function _clearBathymetry() {
+        bathymetrySamples.clear()
+    }
+
+    Timer {
+        id: bathymetryRecordTimer
+        interval: _bathymetrySampleInterval
+        repeat: true
+        running: _bathymetryRecording
+        onTriggered: {
+            // Voor de V5.0 basis komt de diepte nog uit de simulator.
+            // Later vervangt de Kogger/Pi bridge alleen deze live waarde.
+            if (_bathymetryDemoMode) {
+                var n = bathymetrySamples.count
+                _liveDepthMeters = 3.7
+                                  + Math.sin(n * 0.28) * 0.55
+                                  + Math.sin(n * 0.075) * 0.35
+            }
+            _recordBathymetrySample()
+        }
+    }
+
     function _setViewMode(mode) {
         _carpcatcherViewMode = mode
 
@@ -218,6 +304,53 @@ Item {
         visible: _carpcatcherShowMapArea && height > 0
         clip: true
 
+        Rectangle {
+            id: depthLegend
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 8
+            anchors.bottomMargin: 8
+            width: 176
+            height: 30
+            radius: 5
+            color: "#d610151b"
+            border.color: "#3b4651"
+            border.width: 1
+            z: 1200
+            visible: bathymetrySamples.count > 0
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 3
+                Repeater {
+                    model: [
+                        {t:"<1", c:"#e53935"},
+                        {t:"1-2", c:"#fb8c00"},
+                        {t:"2-3", c:"#fdd835"},
+                        {t:"3-4", c:"#43a047"},
+                        {t:"4-5", c:"#29b6f6"},
+                        {t:"5+", c:"#1565c0"}
+                    ]
+
+                    delegate: Row {
+                        spacing: 1
+                        Rectangle {
+                            width: 8
+                            height: 8
+                            radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: modelData.c
+                        }
+                        Text {
+                            text: modelData.t
+                            color: "white"
+                            font.pixelSize: 7
+                        }
+                    }
+                }
+            }
+        }
+
         FlyViewMap {
             id:                     mapControl
             planMasterController:   _planController
@@ -228,6 +361,145 @@ Item {
             mapName:                "FlightDisplayView"
             enabled:                !_is3DMode
             visible:                !_is3DMode
+
+            // LIVECHART meetpunten: echte kaartobjecten met GPS-coördinaten.
+            // Daardoor blijven ze op dezelfde geografische plek bij pan/zoom.
+            MapItemView {
+                id: bathymetryMapItems
+                model: bathymetrySamples
+
+                delegate: MapQuickItem {
+                    coordinate: QtPositioning.coordinate(model.latitude, model.longitude)
+                    anchorPoint.x: 5
+                    anchorPoint.y: 5
+                    z: 50
+
+                    sourceItem: Rectangle {
+                        width: 10
+                        height: 10
+                        radius: 5
+                        color: _depthColor(model.depth)
+                        border.color: "#d9ffffff"
+                        border.width: 1
+
+                        ToolTip.visible: sampleMouse.containsMouse
+                        ToolTip.text: model.depth.toFixed(2) + " m"
+
+                        MouseArea {
+                            id: sampleMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                id: liveChartHud
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 8
+                width: Math.min(parent.width * 0.40, 220)
+                height: 72
+                radius: 7
+                color: "#dc10151b"
+                border.color: _bathymetryRecording ? "#ff7a00" : "#3b4651"
+                border.width: 1
+                z: 1000
+
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+
+                    Text {
+                        text: "LIVECHART  " + (_bathymetryDemoMode ? "DEMO" : "LIVE")
+                        color: _bathymetryRecording ? "#ff9b42" : "#d7e2eb"
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
+
+                    Text {
+                        text: _liveDepthMeters.toFixed(2) + " m   •   " + bathymetrySamples.count + " punten"
+                        color: "white"
+                        font.bold: true
+                        font.pixelSize: 14
+                    }
+
+                    Text {
+                        text: _bathymetryRecording ? "OPNAME AAN" : "OPNAME UIT"
+                        color: _bathymetryRecording ? "#54d17a" : "#aab6c0"
+                        font.pixelSize: 10
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        _bathymetryRecording = !_bathymetryRecording
+                        if (_bathymetryRecording && bathymetrySamples.count === 0) {
+                            _recordBathymetrySample()
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.top: liveChartHud.bottom
+                anchors.right: parent.right
+                anchors.topMargin: 5
+                anchors.rightMargin: 8
+                width: liveChartHud.width
+                height: 30
+                radius: 6
+                color: "#dc10151b"
+                border.color: "#3b4651"
+                border.width: 1
+                z: 1000
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    spacing: 3
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 4
+                        color: _bathymetryRecording ? "#5b2b12" : "#1b232c"
+                        Text {
+                            anchors.centerIn: parent
+                            text: _bathymetryRecording ? "STOP" : "START"
+                            color: "white"
+                            font.bold: true
+                            font.pixelSize: 10
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: _bathymetryRecording = !_bathymetryRecording
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 4
+                        color: "#1b232c"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "WIS KAART"
+                            color: "white"
+                            font.bold: true
+                            font.pixelSize: 9
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: _clearBathymetry()
+                        }
+                    }
+                }
+            }
         }
 
         FlyViewVideo {
@@ -635,4 +907,3 @@ Item {
         _setViewMode(3)
     }
 }
-
