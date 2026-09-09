@@ -80,6 +80,55 @@ Item {
     ListModel {
         id: bathymetrySamples
     }
+    ListModel { id: bathymetryHeatCells }
+    property real _heatCellMeters: 3.0
+    property real _heatRadiusMeters: 12.0
+
+    function _heatLonScale(lat) {
+        return 111320.0 * Math.max(0.15, Math.cos(lat * Math.PI / 180.0))
+    }
+    function _heatDistance(lat1, lon1, lat2, lon2) {
+        var dy=(lat2-lat1)*111320.0
+        var dx=(lon2-lon1)*_heatLonScale((lat1+lat2)*0.5)
+        return Math.sqrt(dx*dx+dy*dy)
+    }
+    function _rebuildHeatmap() {
+        bathymetryHeatCells.clear()
+        if (bathymetrySamples.count < 2) return
+        var minLat=90, maxLat=-90, minLon=180, maxLon=-180, meanLat=0
+        for (var i=0;i<bathymetrySamples.count;i++) {
+            var q=bathymetrySamples.get(i)
+            minLat=Math.min(minLat,q.latitude); maxLat=Math.max(maxLat,q.latitude)
+            minLon=Math.min(minLon,q.longitude); maxLon=Math.max(maxLon,q.longitude)
+            meanLat+=q.latitude
+        }
+        meanLat/=bathymetrySamples.count
+        var dLat=_heatCellMeters/111320.0
+        var dLon=_heatCellMeters/_heatLonScale(meanLat)
+        var rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
+        var cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
+        var scale=Math.max(1.0,Math.sqrt((rows*cols)/900.0))
+        dLat*=scale; dLon*=scale
+        rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
+        cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
+        for (var r=0;r<rows;r++) for (var c=0;c<cols;c++) {
+            var lat=minLat+r*dLat, lon=minLon+c*dLon
+            var sum=0, weights=0, nearby=0, nearest=999999
+            for (var j=0;j<bathymetrySamples.count;j++) {
+                var x=bathymetrySamples.get(j)
+                var d=_heatDistance(lat,lon,x.latitude,x.longitude)
+                nearest=Math.min(nearest,d)
+                if (d<=_heatRadiusMeters) {
+                    var w=1.0/Math.max(1.0,d*d)
+                    sum+=x.depth*w; weights+=w; nearby++
+                }
+            }
+            if (nearby>=2 && nearest<=_heatRadiusMeters && weights>0)
+                bathymetryHeatCells.append({"latitude":lat,"longitude":lon,"depth":sum/weights,"latStep":dLat,"lonStep":dLon})
+        }
+    }
+    Timer { id: bathymetryHeatmapTimer; interval: 1800; repeat: false; onTriggered: _rebuildHeatmap() }
+
 
     function _depthColor(depth) {
         if (depth < 1.0) return "#e53935"   // rood
@@ -129,10 +178,12 @@ Item {
             "temperature": _liveWaterTemperature,
             "timestampMs": Date.now()
         })
+        bathymetryHeatmapTimer.restart()
     }
 
     function _clearBathymetry() {
         bathymetrySamples.clear()
+        bathymetryHeatCells.clear()
     }
 
     Timer {
@@ -364,6 +415,22 @@ Item {
 
             // LIVECHART meetpunten: echte kaartobjecten met GPS-coördinaten.
             // Daardoor blijven ze op dezelfde geografische plek bij pan/zoom.
+            MapItemView {
+                id: bathymetryHeatmapItems
+                model: bathymetryHeatCells
+                delegate: MapPolygon {
+                    border.width: 0
+                    opacity: 0.58
+                    color: _depthColor(model.depth)
+                    path: [
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.55, model.longitude-model.lonStep*0.55),
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.55, model.longitude+model.lonStep*0.55),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.55, model.longitude+model.lonStep*0.55),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.55, model.longitude-model.lonStep*0.55)
+                    ]
+                }
+            }
+
             MapItemView {
                 id: bathymetryMapItems
                 model: bathymetrySamples
