@@ -472,7 +472,7 @@ Item {
                 anchors.right: parent.right
                 anchors.margins: 8
                 width: Math.min(parent.width * 0.40, 220)
-                height: 72
+                height: 88
                 radius: 7
                 color: "#dc10151b"
                 border.color: _bathymetryRecording ? "#ff7a00" : "#3b4651"
@@ -493,10 +493,17 @@ Item {
                     }
 
                     Text {
-                        text: _liveDepthMeters.toFixed(2) + " m   •   " + bathymetrySamples.count + " punten   •   HEAT " + bathymetryHeatCells.count
+                        text: _liveDepthMeters.toFixed(2) + " m   •   " + bathymetrySamples.count + " punten"
                         color: "white"
                         font.bold: true
                         font.pixelSize: 14
+                    }
+
+                    Text {
+                        text: "HEAT " + bathymetryHeatCells.count
+                        color: bathymetryHeatCells.count > 0 ? "#54d17a" : "#ff5252"
+                        font.bold: true
+                        font.pixelSize: 11
                     }
 
                     Text {
