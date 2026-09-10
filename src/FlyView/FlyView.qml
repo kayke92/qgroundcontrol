@@ -127,7 +127,13 @@ Item {
                 bathymetryHeatCells.append({"latitude":lat,"longitude":lon,"depth":sum/weights,"latStep":dLat,"lonStep":dLon})
         }
     }
-    Timer { id: bathymetryHeatmapTimer; interval: 1800; repeat: false; onTriggered: _rebuildHeatmap() }
+    Timer {
+        id: bathymetryHeatmapTimer
+        interval: 1800
+        repeat: true
+        running: _bathymetryRecording && bathymetrySamples.count >= 2
+        onTriggered: _rebuildHeatmap()
+    }
 
 
     function _depthColor(depth) {
@@ -178,7 +184,6 @@ Item {
             "temperature": _liveWaterTemperature,
             "timestampMs": Date.now()
         })
-        bathymetryHeatmapTimer.restart()
     }
 
     function _clearBathymetry() {
@@ -488,7 +493,7 @@ Item {
                     }
 
                     Text {
-                        text: _liveDepthMeters.toFixed(2) + " m   •   " + bathymetrySamples.count + " punten"
+                        text: _liveDepthMeters.toFixed(2) + " m   •   " + bathymetrySamples.count + " punten   •   HEAT " + bathymetryHeatCells.count
                         color: "white"
                         font.bold: true
                         font.pixelSize: 14
