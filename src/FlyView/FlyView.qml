@@ -123,17 +123,11 @@ Item {
                     sum+=x.depth*w; weights+=w; nearby++
                 }
             }
-            if (nearby>=2 && nearest<=_heatRadiusMeters && weights>0)
+            if (nearby>=1 && nearest<=_heatRadiusMeters && weights>0)
                 bathymetryHeatCells.append({"latitude":lat,"longitude":lon,"depth":sum/weights,"latStep":dLat,"lonStep":dLon})
         }
     }
-    Timer {
-        id: bathymetryHeatmapTimer
-        interval: 1800
-        repeat: true
-        running: _bathymetryRecording && bathymetrySamples.count >= 2
-        onTriggered: _rebuildHeatmap()
-    }
+
 
 
     function _depthColor(depth) {
@@ -184,6 +178,9 @@ Item {
             "temperature": _liveWaterTemperature,
             "timestampMs": Date.now()
         })
+        if (bathymetrySamples.count >= 2 && (bathymetrySamples.count % 3) === 0) {
+            _rebuildHeatmap()
+        }
     }
 
     function _clearBathymetry() {
