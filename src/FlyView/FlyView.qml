@@ -89,9 +89,83 @@ Item {
     ListModel {
         id: bathymetrySamples
     }
+    property real _bathymetryMinDepth: 0.0
+    property real _bathymetryMaxDepth: 6.0
+    property real _bathymetryContourStep: 0.5
+
     ListModel { id: bathymetryHeatCells }
     property real _heatCellMeters: 1.0
     property real _heatRadiusMeters: 4.0
+
+    function _bathymetryColor(depth) {
+
+        var minD = _bathymetryMinDepth
+
+        var maxD = _bathymetryMaxDepth
+
+        var span = Math.max(0.25, maxD - minD)
+
+        var t = Math.max(0.0, Math.min(1.0, (depth - minD) / span))
+
+
+        var stops = [
+
+            [0.00, 0.90, 0.12, 0.08],
+
+            [0.18, 1.00, 0.45, 0.05],
+
+            [0.36, 1.00, 0.85, 0.08],
+
+            [0.54, 0.15, 0.78, 0.24],
+
+            [0.72, 0.05, 0.72, 0.82],
+
+            [1.00, 0.05, 0.20, 0.92]
+
+        ]
+
+
+        for (var i = 0; i < stops.length - 1; i++) {
+
+            var a = stops[i]
+
+            var b = stops[i + 1]
+
+            if (t >= a[0] && t <= b[0]) {
+
+                var u = (t - a[0]) / Math.max(0.0001, b[0] - a[0])
+
+                return Qt.rgba(
+
+                    a[1] + (b[1] - a[1]) * u,
+
+                    a[2] + (b[2] - a[2]) * u,
+
+                    a[3] + (b[3] - a[3]) * u,
+
+                    1.0
+
+                )
+
+            }
+
+        }
+
+        return Qt.rgba(0.05, 0.20, 0.92, 1.0)
+
+    }
+
+
+    function _isContourDepth(depth) {
+
+        var step = Math.max(0.1, _bathymetryContourStep)
+
+        var nearest = Math.round(depth / step) * step
+
+        return Math.abs(depth - nearest) <= 0.055
+
+    }
+
 
     function _heatLonScale(lat) {
         return 111320.0 * Math.max(0.15, Math.cos(lat * Math.PI / 180.0))
@@ -104,6 +178,24 @@ Item {
     function _rebuildHeatmap() {
         bathymetryHeatCells.clear()
         if (bathymetrySamples.count < 2) return
+
+        var localMinDepth = 9999.0
+        var localMaxDepth = -9999.0
+        for (var di = 0; di < bathymetrySamples.count; di++) {
+            var dd = bathymetrySamples.get(di).depth
+            localMinDepth = Math.min(localMinDepth, dd)
+            localMaxDepth = Math.max(localMaxDepth, dd)
+        }
+
+        if ((localMaxDepth - localMinDepth) < 1.0) {
+            var midDepth = (localMinDepth + localMaxDepth) * 0.5
+            localMinDepth = Math.max(0.0, midDepth - 0.5)
+            localMaxDepth = midDepth + 0.5
+        }
+
+        _bathymetryMinDepth = localMinDepth
+        _bathymetryMaxDepth = localMaxDepth
+
         var minLat=90, maxLat=-90, minLon=180, maxLon=-180, meanLat=0
         for (var i=0;i<bathymetrySamples.count;i++) {
             var q=bathymetrySamples.get(i)
@@ -454,9 +546,10 @@ Item {
                 id: bathymetryHeatmapItems
                 model: bathymetryHeatCells
                 delegate: MapPolygon {
-                    border.width: 0
+                    border.width: _isContourDepth(model.depth) ? 1.25 : 0
+        border.color: Qt.rgba(0.02, 0.04, 0.08, 0.72)
                     opacity: 0.72
-                    color: _depthColor(model.depth)
+                    color: _bathymetryColor(model.depth)
                     path: [
                         QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude-model.lonStep*0.62),
                         QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude+model.lonStep*0.62),
@@ -530,7 +623,7 @@ Item {
                     }
 
                     Text {
-                        text: "HEAT " + bathymetryHeatCells.count
+                        text: "HEAT " + bathymetryHeatCells.count + "   " + _bathymetryMinDepth.toFixed(1) + "-" + _bathymetryMaxDepth.toFixed(1) + "m"
                         color: bathymetryHeatCells.count > 0 ? "#54d17a" : "#ff5252"
                         font.bold: true
                         font.pixelSize: 11
