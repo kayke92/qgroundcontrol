@@ -90,8 +90,8 @@ Item {
         id: bathymetrySamples
     }
     ListModel { id: bathymetryHeatCells }
-    property real _heatCellMeters: 3.0
-    property real _heatRadiusMeters: 12.0
+    property real _heatCellMeters: 1.0
+    property real _heatRadiusMeters: 4.0
 
     function _heatLonScale(lat) {
         return 111320.0 * Math.max(0.15, Math.cos(lat * Math.PI / 180.0))
@@ -455,13 +455,13 @@ Item {
                 model: bathymetryHeatCells
                 delegate: MapPolygon {
                     border.width: 0
-                    opacity: 0.58
+                    opacity: 0.72
                     color: _depthColor(model.depth)
                     path: [
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.55, model.longitude-model.lonStep*0.55),
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.55, model.longitude+model.lonStep*0.55),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.55, model.longitude+model.lonStep*0.55),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.55, model.longitude-model.lonStep*0.55)
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude-model.lonStep*0.62),
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude+model.lonStep*0.62),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.62, model.longitude+model.lonStep*0.62),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.62, model.longitude-model.lonStep*0.62)
                     ]
                 }
             }
