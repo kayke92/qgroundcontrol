@@ -77,6 +77,12 @@ Item {
     property int    _bathymetrySampleInterval:  900
     property int    _bathymetryMaxSamples:      2500
 
+    property real _demoLatitude: NaN
+    property real _demoLongitude: NaN
+    property real _demoHeadingDeg: 70.0
+    property int _demoTrackStep: 0
+    property real _demoStepMeters: 0.75
+
     ListModel {
         id: bathymetrySamples
     }
@@ -184,6 +190,10 @@ Item {
     }
 
     function _clearBathymetry() {
+        _demoLatitude = NaN
+        _demoLongitude = NaN
+        _demoHeadingDeg = 70.0
+        _demoTrackStep = 0
         bathymetrySamples.clear()
         bathymetryHeatCells.clear()
     }
@@ -197,11 +207,27 @@ Item {
             // Voor de V5.0 basis komt de diepte nog uit de simulator.
             // Later vervangt de Kogger/Pi bridge alleen deze live waarde.
             if (_bathymetryDemoMode) {
-                var n = bathymetrySamples.count
-                _liveDepthMeters = 3.7
-                                  + Math.sin(n * 0.28) * 0.55
-                                  + Math.sin(n * 0.075) * 0.35
+            if (!isFinite(_demoLatitude) || !isFinite(_demoLongitude)) {
+                _demoLatitude = mapControl.center.latitude
+                _demoLongitude = mapControl.center.longitude
+                _demoHeadingDeg = 70.0
+                _demoTrackStep = 0
             }
+
+            if (_demoTrackStep > 0 && (_demoTrackStep % 18) === 0)
+                _demoHeadingDeg += 8.0
+
+            var headingRad = _demoHeadingDeg * Math.PI / 180.0
+            var northMeters = Math.cos(headingRad) * _demoStepMeters
+            var eastMeters = Math.sin(headingRad) * _demoStepMeters
+
+            _demoLatitude += northMeters / 111320.0
+            _demoLongitude += eastMeters / _heatLonScale(_demoLatitude)
+
+            latitude = _demoLatitude
+            longitude = _demoLongitude
+            _demoTrackStep++
+        }
             _recordBathymetrySample()
         }
     }
