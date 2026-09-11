@@ -33,7 +33,9 @@ Item {
     readonly property bool _carpcatcherShowMapArea: _carpcatcherViewMode !== 2
     readonly property real _carpcatcherContentTop: modeBar.y + modeBar.height
     readonly property real _carpcatcherContentHeight: Math.max(0, height - _carpcatcherContentTop)
-    readonly property real _carpcatcherSonarHeight: _carpcatcherViewMode === 2
+    readonly property real _carpcatcherSonarHeight: (_carpcatcherViewMode === 2 ||
+                                                       _carpcatcherViewMode === 4 ||
+                                                       _carpcatcherViewMode === 5)
                                                       ? _carpcatcherContentHeight
                                                       : (_carpcatcherShowSonar ? _carpcatcherContentHeight * 0.44 : 0)
 
@@ -160,11 +162,28 @@ Item {
         var index = bathymetrySamples.count
 
         if (!usingVehicleGps) {
-            var ring = Math.floor(index / 18) + 1
-            var angle = (index % 18) * (Math.PI * 2 / 18)
-            var radius = ring * 0.000035
-            latitude += Math.sin(angle) * radius
-            longitude += Math.cos(angle) * radius
+            // Realistische demo-vaarroute: ca. 0,75 m tussen meetpunten.
+            var stepMeters = 0.75
+            var segmentLength = 18
+            var segment = Math.floor(index / segmentLength)
+            var localIndex = index % segmentLength
+            var headingDeg = 70 + (segment * 8)
+            var headingRad = headingDeg * Math.PI / 180.0
+
+            var northMeters = 0.0
+            var eastMeters = 0.0
+
+            for (var seg = 0; seg < segment; seg++) {
+                var segHeading = (70 + (seg * 8)) * Math.PI / 180.0
+                northMeters += Math.cos(segHeading) * stepMeters * segmentLength
+                eastMeters += Math.sin(segHeading) * stepMeters * segmentLength
+            }
+
+            northMeters += Math.cos(headingRad) * stepMeters * localIndex
+            eastMeters += Math.sin(headingRad) * stepMeters * localIndex
+
+            latitude += northMeters / 111320.0
+            longitude += eastMeters / _heatLonScale(latitude)
         }
 
         if (bathymetrySamples.count >= _bathymetryMaxSamples) {
@@ -350,9 +369,11 @@ Item {
         id: mapHolder
         x: 0
         y: _carpcatcherContentTop
-        width: parent.width
+        width: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.45 : parent.width
         height: _carpcatcherShowMapArea
-                  ? Math.max(0, _carpcatcherContentHeight - _carpcatcherSonarHeight)
+                  ? ((_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5)
+                       ? _carpcatcherContentHeight
+                       : Math.max(0, _carpcatcherContentHeight - _carpcatcherSonarHeight))
                   : 0
         visible: _carpcatcherShowMapArea && height > 0
         clip: true
@@ -694,11 +715,11 @@ Item {
     // ---------------------------------------------------------------------
     Rectangle {
         id: sonarPanel
-        x: 0
-        y: _carpcatcherViewMode === 2
+        x: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.45 : 0
+        y: (_carpcatcherViewMode === 2 || _carpcatcherViewMode === 4 || _carpcatcherViewMode === 5)
              ? _carpcatcherContentTop
              : (_carpcatcherContentTop + (_carpcatcherContentHeight - _carpcatcherSonarHeight))
-        width: parent.width
+        width: (_carpcatcherViewMode === 4 || _carpcatcherViewMode === 5) ? parent.width * 0.55 : parent.width
         height: _carpcatcherSonarHeight
         visible: _carpcatcherShowSonar && height > 0
         z: QGroundControl.zOrderWidgets + 3
