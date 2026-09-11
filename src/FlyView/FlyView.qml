@@ -79,6 +79,13 @@ Item {
     property int    _bathymetrySampleInterval:  900
     property int    _bathymetryMaxSamples:      2500
 
+    property bool _demoTrackInitialized: false
+    property real _demoLatitude: 0.0
+    property real _demoLongitude: 0.0
+    property real _demoHeadingDeg: 70.0
+    property int _demoTrackStep: 0
+    property real _demoStepMeters: 0.75
+
     ListModel {
         id: bathymetrySamples
     }
@@ -162,28 +169,28 @@ Item {
         var index = bathymetrySamples.count
 
         if (!usingVehicleGps) {
-            // Realistische demo-vaarroute: ca. 0,75 m tussen meetpunten.
-            var stepMeters = 0.75
-            var segmentLength = 18
-            var segment = Math.floor(index / segmentLength)
-            var localIndex = index % segmentLength
-            var headingDeg = 70 + (segment * 8)
-            var headingRad = headingDeg * Math.PI / 180.0
-
-            var northMeters = 0.0
-            var eastMeters = 0.0
-
-            for (var seg = 0; seg < segment; seg++) {
-                var segHeading = (70 + (seg * 8)) * Math.PI / 180.0
-                northMeters += Math.cos(segHeading) * stepMeters * segmentLength
-                eastMeters += Math.sin(segHeading) * stepMeters * segmentLength
+            if (!_demoTrackInitialized) {
+                _demoLatitude = coordinate.latitude
+                _demoLongitude = coordinate.longitude
+                _demoHeadingDeg = 70.0
+                _demoTrackStep = 0
+                _demoTrackInitialized = true
             }
 
-            northMeters += Math.cos(headingRad) * stepMeters * localIndex
-            eastMeters += Math.sin(headingRad) * stepMeters * localIndex
+            if (_demoTrackStep > 0 && (_demoTrackStep % 18) === 0) {
+                _demoHeadingDeg += 8.0
+            }
 
-            latitude += northMeters / 111320.0
-            longitude += eastMeters / _heatLonScale(latitude)
+            var headingRad = _demoHeadingDeg * Math.PI / 180.0
+            var northMeters = Math.cos(headingRad) * _demoStepMeters
+            var eastMeters = Math.sin(headingRad) * _demoStepMeters
+
+            _demoLatitude += northMeters / 111320.0
+            _demoLongitude += eastMeters / _heatLonScale(_demoLatitude)
+
+            latitude = _demoLatitude
+            longitude = _demoLongitude
+            _demoTrackStep++
         }
 
         if (bathymetrySamples.count >= _bathymetryMaxSamples) {
@@ -203,6 +210,11 @@ Item {
     }
 
     function _clearBathymetry() {
+        _demoTrackInitialized = false
+        _demoLatitude = 0.0
+        _demoLongitude = 0.0
+        _demoHeadingDeg = 70.0
+        _demoTrackStep = 0
         bathymetrySamples.clear()
         bathymetryHeatCells.clear()
     }
