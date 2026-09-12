@@ -546,15 +546,14 @@ Item {
                 id: bathymetryHeatmapItems
                 model: bathymetryHeatCells
                 delegate: MapPolygon {
-                    border.width: _isContourDepth(model.depth) ? 1.25 : 0
-        border.color: Qt.rgba(0.02, 0.04, 0.08, 0.72)
+                    border.width: 0
                     opacity: 0.72
                     color: _bathymetryColor(model.depth)
                     path: [
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude-model.lonStep*0.62),
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.62, model.longitude+model.lonStep*0.62),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.62, model.longitude+model.lonStep*0.62),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.62, model.longitude-model.lonStep*0.62)
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.68, model.longitude-model.lonStep*0.68),
+                        QtPositioning.coordinate(model.latitude-model.latStep*0.68, model.longitude+model.lonStep*0.68),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude+model.lonStep*0.68),
+                        QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude-model.lonStep*0.68)
                     ]
                 }
             }
@@ -562,6 +561,7 @@ Item {
             MapItemView {
                 id: bathymetryMapItems
                 model: bathymetrySamples
+                visible: false
 
                 delegate: MapQuickItem {
                     coordinate: QtPositioning.coordinate(model.latitude, model.longitude)
