@@ -546,7 +546,8 @@ Item {
                 id: bathymetryHeatmapItems
                 model: bathymetryHeatCells
                 delegate: MapPolygon {
-                    border.width: 0
+                    border.width: 1
+                    border.color: _bathymetryColor(model.depth)
                     opacity: 0.72
                     color: _bathymetryColor(model.depth)
                     path: [
