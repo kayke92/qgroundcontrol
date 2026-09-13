@@ -1,11 +1,11 @@
 #include "BathymetryRenderer.h"
 
-#include <QColor>
-#include <QHash>
-#include <QImage>
-#include <QPainter>
-#include <QVariantMap>
-#include <QVector>
+#include <QtGui/QColor>
+#include <QtCore/QHash>
+#include <QtGui/QImage>
+#include <QtGui/QPainter>
+#include <QtCore/QVariantMap>
+#include <QtCore/QVector>
 
 #include <algorithm>
 #include <cmath>

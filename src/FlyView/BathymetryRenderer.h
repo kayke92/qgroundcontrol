@@ -2,7 +2,7 @@
 
 #include <QtQuick/QQuickPaintedItem>
 #include <QtQml/qqmlregistration.h>
-#include <QVariantList>
+#include <QtCore/QVariantList>
 
 class BathymetryRenderer : public QQuickPaintedItem
 {
