@@ -100,7 +100,9 @@ Item {
 
     ListModel { id: bathymetryHeatCells }
     property real _heatCellMeters: 0.5
-    property real _heatRadiusMeters: 4.0
+    property real _heatRadiusMeters: 2.0
+    property var _bathymetryScreenSamples: []
+    property real _bathymetryMetersPerPixel: 1.0
 
     function _bathymetryColor(depth) {
 
@@ -180,16 +182,40 @@ Item {
         var dx=(lon2-lon1)*_heatLonScale((lat1+lat2)*0.5)
         return Math.sqrt(dx*dx+dy*dy)
     }
+    function _updateBathymetryRenderer() {
+        if (!mapControl || bathymetrySamples.count < 2 || mapControl.width < 2 || mapControl.height < 2) {
+            _bathymetryScreenSamples = []
+            return
+        }
+
+        var screenSamples = []
+        for (var i = 0; i < bathymetrySamples.count; i++) {
+            var sample = bathymetrySamples.get(i)
+            var pixel = mapControl.fromCoordinate(
+                        QtPositioning.coordinate(sample.latitude, sample.longitude), false)
+            screenSamples.push({"x": pixel.x, "y": pixel.y, "depth": sample.depth})
+        }
+
+        var leftCoordinate = mapControl.toCoordinate(Qt.point(0, mapControl.height * 0.5), false)
+        var rightCoordinate = mapControl.toCoordinate(Qt.point(mapControl.width, mapControl.height * 0.5), false)
+        var screenDistanceMeters = leftCoordinate.distanceTo(rightCoordinate)
+        _bathymetryMetersPerPixel = Math.max(0.01, screenDistanceMeters / Math.max(1, mapControl.width))
+        _bathymetryScreenSamples = screenSamples
+    }
+
     function _rebuildHeatmap() {
         bathymetryHeatCells.clear()
-        if (bathymetrySamples.count < 2) return
+        if (bathymetrySamples.count < 2) {
+            _bathymetryScreenSamples = []
+            return
+        }
 
         var localMinDepth = 9999.0
         var localMaxDepth = -9999.0
-        for (var di = 0; di < bathymetrySamples.count; di++) {
-            var dd = bathymetrySamples.get(di).depth
-            localMinDepth = Math.min(localMinDepth, dd)
-            localMaxDepth = Math.max(localMaxDepth, dd)
+        for (var i = 0; i < bathymetrySamples.count; i++) {
+            var depth = bathymetrySamples.get(i).depth
+            localMinDepth = Math.min(localMinDepth, depth)
+            localMaxDepth = Math.max(localMaxDepth, depth)
         }
 
         if ((localMaxDepth - localMinDepth) < 1.0) {
@@ -200,41 +226,8 @@ Item {
 
         _bathymetryMinDepth = localMinDepth
         _bathymetryMaxDepth = localMaxDepth
-
-        var minLat=90, maxLat=-90, minLon=180, maxLon=-180, meanLat=0
-        for (var i=0;i<bathymetrySamples.count;i++) {
-            var q=bathymetrySamples.get(i)
-            minLat=Math.min(minLat,q.latitude); maxLat=Math.max(maxLat,q.latitude)
-            minLon=Math.min(minLon,q.longitude); maxLon=Math.max(maxLon,q.longitude)
-            meanLat+=q.latitude
-        }
-        meanLat/=bathymetrySamples.count
-        var dLat=_heatCellMeters/111320.0
-        var dLon=_heatCellMeters/_heatLonScale(meanLat)
-        var rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
-        var cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
-        // Fijner raster voor vloeiendere kleurbanen; begrensd voor Android-prestaties.
-        var scale=Math.max(1.0,Math.sqrt((rows*cols)/1800.0))
-        dLat*=scale; dLon*=scale
-        rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
-        cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
-        for (var r=0;r<rows;r++) for (var c=0;c<cols;c++) {
-            var lat=minLat+r*dLat, lon=minLon+c*dLon
-            var sum=0, weights=0, nearby=0, nearest=999999
-            for (var j=0;j<bathymetrySamples.count;j++) {
-                var x=bathymetrySamples.get(j)
-                var d=_heatDistance(lat,lon,x.latitude,x.longitude)
-                nearest=Math.min(nearest,d)
-                if (d<=_heatRadiusMeters) {
-                    var w=1.0/Math.max(1.0,d*d)
-                    sum+=x.depth*w; weights+=w; nearby++
-                }
-            }
-            if (nearby>=1 && nearest<=_heatRadiusMeters && weights>0)
-                bathymetryHeatCells.append({"latitude":lat,"longitude":lon,"depth":sum/weights,"latStep":dLat,"lonStep":dLon})
-        }
+        _updateBathymetryRenderer()
     }
-
 
 
     function _depthColor(depth) {
@@ -322,6 +315,7 @@ Item {
         _bathymetryCurrentLongitude = 0.0
         bathymetrySamples.clear()
         bathymetryHeatCells.clear()
+        _bathymetryScreenSamples = []
     }
 
     Timer {
@@ -558,6 +552,7 @@ Item {
             MapItemView {
                 id: bathymetryHeatmapItems
                 model: bathymetryHeatCells
+                visible: false
                 delegate: MapPolygon {
                     border.width: 1
                     border.color: _bathymetryColor(model.depth)
@@ -570,6 +565,34 @@ Item {
                         QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude-model.lonStep*0.68)
                     ]
                 }
+            }
+
+            // Vloeiende schermrasterlaag, geografisch bijgewerkt bij pan en zoom.
+            BathymetryRenderer {
+                id: bathymetryRenderer
+                anchors.fill: parent
+                z: 40
+                visible: _bathymetryScreenSamples.length >= 2
+                samples: _bathymetryScreenSamples
+                radiusPixels: Math.max(2.0, _heatRadiusMeters / _bathymetryMetersPerPixel)
+                minimumDepth: _bathymetryMinDepth
+                maximumDepth: _bathymetryMaxDepth
+            }
+
+            Timer {
+                id: bathymetryRendererRefreshTimer
+                interval: 100
+                repeat: false
+                onTriggered: _updateBathymetryRenderer()
+            }
+
+            Connections {
+                target: mapControl
+                function onCenterChanged() { bathymetryRendererRefreshTimer.restart() }
+                function onZoomLevelChanged() { bathymetryRendererRefreshTimer.restart() }
+                function onBearingChanged() { bathymetryRendererRefreshTimer.restart() }
+                function onWidthChanged() { bathymetryRendererRefreshTimer.restart() }
+                function onHeightChanged() { bathymetryRendererRefreshTimer.restart() }
             }
 
             // Eén actueel GPS-punt; de volledige historische meetroute blijft verborgen.
@@ -670,8 +693,8 @@ Item {
                     }
 
                     Text {
-                        text: "HEAT " + bathymetryHeatCells.count + "   " + _bathymetryMinDepth.toFixed(1) + "-" + _bathymetryMaxDepth.toFixed(1) + "m"
-                        color: bathymetryHeatCells.count > 0 ? "#54d17a" : "#ff5252"
+                        text: "RASTER " + _bathymetryScreenSamples.length + "   " + _bathymetryMinDepth.toFixed(1) + "-" + _bathymetryMaxDepth.toFixed(1) + "m"
+                        color: _bathymetryScreenSamples.length > 0 ? "#54d17a" : "#ff5252"
                         font.bold: true
                         font.pixelSize: 11
                     }
