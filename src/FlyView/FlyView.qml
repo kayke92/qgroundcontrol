@@ -567,33 +567,27 @@ Item {
                 }
             }
 
-            // Vloeiende schermrasterlaag, geografisch bijgewerkt bij pan en zoom.
-            BathymetryRenderer {
-                id: bathymetryRenderer
+            // Diagnose V5.5.0c: maak de C++ renderer pas aan wanneer echte
+            // schermsamples beschikbaar zijn. De app-start blijft hierdoor geïsoleerd.
+            Loader {
+                id: bathymetryRendererLoader
                 anchors.fill: parent
                 z: 40
-                visible: _bathymetryScreenSamples.length >= 2
-                samples: _bathymetryScreenSamples
-                radiusPixels: Math.max(2.0, _heatRadiusMeters / _bathymetryMetersPerPixel)
-                minimumDepth: _bathymetryMinDepth
-                maximumDepth: _bathymetryMaxDepth
+                active: _bathymetryScreenSamples.length >= 2
+
+                sourceComponent: Component {
+                    BathymetryRenderer {
+                        anchors.fill: parent
+                        samples: _bathymetryScreenSamples
+                        radiusPixels: Math.max(2.0, _heatRadiusMeters / _bathymetryMetersPerPixel)
+                        minimumDepth: _bathymetryMinDepth
+                        maximumDepth: _bathymetryMaxDepth
+                    }
+                }
             }
 
-            Timer {
-                id: bathymetryRendererRefreshTimer
-                interval: 100
-                repeat: false
-                onTriggered: _updateBathymetryRenderer()
-            }
-
-            Connections {
-                target: mapControl
-                function onCenterChanged() { bathymetryRendererRefreshTimer.restart() }
-                function onZoomLevelChanged() { bathymetryRendererRefreshTimer.restart() }
-                function onBearingChanged() { bathymetryRendererRefreshTimer.restart() }
-                function onWidthChanged() { bathymetryRendererRefreshTimer.restart() }
-                function onHeightChanged() { bathymetryRendererRefreshTimer.restart() }
-            }
+            // Pan/zoom-signalen worden in deze diagnoseversie bewust nog niet gekoppeld.
+            // De laag wordt wel bij iedere derde nieuwe meting bijgewerkt.
 
             // Eén actueel GPS-punt; de volledige historische meetroute blijft verborgen.
             MapQuickItem {
