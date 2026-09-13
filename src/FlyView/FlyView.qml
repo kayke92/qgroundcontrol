@@ -86,6 +86,11 @@ Item {
     property int _demoTrackStep: 0
     property real _demoStepMeters: 0.75
 
+    // Laat uitsluitend de meest recente GPS/dieptemeting op de kaart zien.
+    property bool _bathymetryHasCurrentPosition: false
+    property real _bathymetryCurrentLatitude: 0.0
+    property real _bathymetryCurrentLongitude: 0.0
+
     ListModel {
         id: bathymetrySamples
     }
@@ -94,7 +99,7 @@ Item {
     property real _bathymetryContourStep: 0.5
 
     ListModel { id: bathymetryHeatCells }
-    property real _heatCellMeters: 1.0
+    property real _heatCellMeters: 0.5
     property real _heatRadiusMeters: 4.0
 
     function _bathymetryColor(depth) {
@@ -208,7 +213,8 @@ Item {
         var dLon=_heatCellMeters/_heatLonScale(meanLat)
         var rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
         var cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
-        var scale=Math.max(1.0,Math.sqrt((rows*cols)/900.0))
+        // Fijner raster voor vloeiendere kleurbanen; begrensd voor Android-prestaties.
+        var scale=Math.max(1.0,Math.sqrt((rows*cols)/1800.0))
         dLat*=scale; dLon*=scale
         rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
         cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
@@ -285,6 +291,10 @@ Item {
             _demoTrackStep++
         }
 
+        _bathymetryCurrentLatitude = latitude
+        _bathymetryCurrentLongitude = longitude
+        _bathymetryHasCurrentPosition = true
+
         if (bathymetrySamples.count >= _bathymetryMaxSamples) {
             bathymetrySamples.remove(0, 1)
         }
@@ -307,6 +317,9 @@ Item {
         _demoLongitude = 0.0
         _demoHeadingDeg = 70.0
         _demoTrackStep = 0
+        _bathymetryHasCurrentPosition = false
+        _bathymetryCurrentLatitude = 0.0
+        _bathymetryCurrentLongitude = 0.0
         bathymetrySamples.clear()
         bathymetryHeatCells.clear()
     }
@@ -556,6 +569,39 @@ Item {
                         QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude+model.lonStep*0.68),
                         QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude-model.lonStep*0.68)
                     ]
+                }
+            }
+
+            // Eén actueel GPS-punt; de volledige historische meetroute blijft verborgen.
+            MapQuickItem {
+                id: bathymetryCurrentPositionItem
+                visible: _bathymetryHasCurrentPosition
+                coordinate: QtPositioning.coordinate(_bathymetryCurrentLatitude, _bathymetryCurrentLongitude)
+                anchorPoint.x: 12
+                anchorPoint.y: 12
+                z: 60
+
+                sourceItem: Item {
+                    width: 24
+                    height: 24
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 18
+                        height: 18
+                        radius: 9
+                        color: "#ff7a00"
+                        border.color: "#ffffff"
+                        border.width: 2
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 4
+                        height: 4
+                        radius: 2
+                        color: "#17212b"
+                    }
                 }
             }
 
