@@ -100,7 +100,8 @@ Item {
 
     ListModel { id: bathymetryHeatCells }
     property real _heatCellMeters: 0.5
-    property real _heatRadiusMeters: 4.0
+    // Kleur uitsluitend binnen 2 meter van een echte GPS/dieptemeting.
+    property real _heatRadiusMeters: 2.0
 
     function _bathymetryColor(depth) {
 
