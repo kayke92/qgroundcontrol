@@ -99,7 +99,8 @@ Item {
     property real _bathymetryContourStep: 0.5
 
     ListModel { id: bathymetryHeatCells }
-    property real _heatCellMeters: 0.5
+    // Kwartmeter-raster verkleint zichtbare kleurblokken; Android-limiet blijft actief.
+    property real _heatCellMeters: 0.25
     // Kleur uitsluitend binnen 2 meter van een echte GPS/dieptemeting.
     property real _heatRadiusMeters: 2.0
 
