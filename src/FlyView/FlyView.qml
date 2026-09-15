@@ -555,23 +555,143 @@ Item {
             enabled:                !_is3DMode
             visible:                !_is3DMode
 
-            // LIVECHART meetpunten: echte kaartobjecten met GPS-coördinaten.
-            // Daardoor blijven ze op dezelfde geografische plek bij pan/zoom.
-            MapItemView {
-                id: bathymetryHeatmapItems
-                model: bathymetryHeatCells
-                delegate: MapPolygon {
-                    border.width: 1
-                    border.color: _bathymetryColor(model.depth)
-                    opacity: 0.72
-                    color: _bathymetryColor(model.depth)
-                    path: [
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.68, model.longitude-model.lonStep*0.68),
-                        QtPositioning.coordinate(model.latitude-model.latStep*0.68, model.longitude+model.lonStep*0.68),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude+model.lonStep*0.68),
-                        QtPositioning.coordinate(model.latitude+model.latStep*0.68, model.longitude-model.lonStep*0.68)
-                    ]
+            // Doorlopende bathymetrische laag. De ruwe GPS/dieptemetingen worden
+            // op één lichte Canvas geïnterpoleerd; er zijn geen losse kaartvakjes.
+            Canvas {
+                id: bathymetrySmoothCanvas
+                anchors.fill: parent
+                z: 45
+                enabled: false
+                visible: bathymetrySamples.count >= 2
+                opacity: 1.0
+                antialiasing: true
+                smooth: true
+                renderTarget: Canvas.FramebufferObject
+                renderStrategy: Canvas.Cooperative
+
+                // Een kwart van de schermresolutie houdt Android soepel.
+                // Qt schaalt deze ene textuur vloeiend naar het kaartscherm.
+                canvasSize: Qt.size(Math.max(120, Math.ceil(width / 4)),
+                                    Math.max(80, Math.ceil(height / 4)))
+
+                onWidthChanged: requestPaint()
+                onHeightChanged: requestPaint()
+
+                onPaint: {
+                    var ctx = getContext("2d")
+                    var cw = canvasSize.width
+                    var ch = canvasSize.height
+                    ctx.clearRect(0, 0, cw, ch)
+
+                    if (bathymetrySamples.count < 2 || width < 2 || height < 2)
+                        return
+
+                    var centre = mapControl.center
+                    if (!centre || !centre.isValid)
+                        return
+
+                    // Bepaal hoeveel schermpixels één meter op het huidige zoomniveau is.
+                    var centrePoint = mapControl.fromCoordinate(centre, false)
+                    var northOneMeter = QtPositioning.coordinate(centre.latitude + (1.0 / 111320.0), centre.longitude)
+                    var northPoint = mapControl.fromCoordinate(northOneMeter, false)
+                    var pixelsPerMeter = Math.abs(northPoint.y - centrePoint.y)
+                    if (!isFinite(pixelsPerMeter) || pixelsPerMeter < 0.01)
+                        return
+
+                    var scaleX = cw / width
+                    var scaleY = ch / height
+                    var lowPixelsPerMeter = pixelsPerMeter * ((scaleX + scaleY) * 0.5)
+                    var radiusLow = Math.max(1.0, _heatRadiusMeters * lowPixelsPerMeter)
+                    var samples = []
+                    var minX = cw
+                    var minY = ch
+                    var maxX = 0
+                    var maxY = 0
+
+                    for (var si = 0; si < bathymetrySamples.count; si++) {
+                        var sample = bathymetrySamples.get(si)
+                        var point = mapControl.fromCoordinate(
+                                    QtPositioning.coordinate(sample.latitude, sample.longitude), false)
+                        var lx = point.x * scaleX
+                        var ly = point.y * scaleY
+                        if (lx < -radiusLow || lx > cw + radiusLow ||
+                                ly < -radiusLow || ly > ch + radiusLow)
+                            continue
+
+                        samples.push({"x": lx, "y": ly, "depth": sample.depth})
+                        minX = Math.min(minX, lx - radiusLow)
+                        minY = Math.min(minY, ly - radiusLow)
+                        maxX = Math.max(maxX, lx + radiusLow)
+                        maxY = Math.max(maxY, ly + radiusLow)
+                    }
+
+                    if (samples.length === 0)
+                        return
+
+                    var startX = Math.max(0, Math.floor(minX))
+                    var startY = Math.max(0, Math.floor(minY))
+                    var endX = Math.min(cw - 1, Math.ceil(maxX))
+                    var endY = Math.min(ch - 1, Math.ceil(maxY))
+                    var radiusMeters = _heatRadiusMeters
+                    var featherStart = radiusMeters * 0.78
+
+                    for (var py = startY; py <= endY; py++) {
+                        for (var px = startX; px <= endX; px++) {
+                            var sum = 0.0
+                            var weights = 0.0
+                            var nearest = 999999.0
+
+                            for (var sj = 0; sj < samples.length; sj++) {
+                                var dx = px + 0.5 - samples[sj].x
+                                var dy = py + 0.5 - samples[sj].y
+                                var distanceMeters = Math.sqrt(dx * dx + dy * dy) / lowPixelsPerMeter
+                                if (distanceMeters > radiusMeters)
+                                    continue
+
+                                nearest = Math.min(nearest, distanceMeters)
+                                var weight = 1.0 / Math.max(0.20, distanceMeters * distanceMeters)
+                                sum += samples[sj].depth * weight
+                                weights += weight
+                            }
+
+                            if (weights <= 0.0)
+                                continue
+
+                            var alpha = 0.74
+                            if (nearest > featherStart) {
+                                var fade = (radiusMeters - nearest) /
+                                           Math.max(0.01, radiusMeters - featherStart)
+                                alpha *= Math.max(0.0, Math.min(1.0, fade))
+                            }
+
+                            ctx.globalAlpha = alpha
+                            ctx.fillStyle = _bathymetryColor(sum / weights)
+                            ctx.fillRect(px, py, 1.15, 1.15)
+                        }
+                    }
+                    ctx.globalAlpha = 1.0
                 }
+            }
+
+            // Vernieuw na iedere interne heatmap-update (iedere drie meetpunten).
+            Connections {
+                target: bathymetryHeatCells
+                function onCountChanged() { bathymetrySmoothRefresh.restart() }
+            }
+
+            Timer {
+                id: bathymetrySmoothRefresh
+                interval: 120
+                repeat: false
+                onTriggered: bathymetrySmoothCanvas.requestPaint()
+            }
+
+            // Houd de laag geografisch gelijk met de kaart tijdens navigeren.
+            Connections {
+                target: mapControl
+                function onCenterChanged() { bathymetrySmoothRefresh.restart() }
+                function onZoomLevelChanged() { bathymetrySmoothRefresh.restart() }
+                function onBearingChanged() { bathymetrySmoothRefresh.restart() }
             }
 
             // Eén actueel GPS-punt; de volledige historische meetroute blijft verborgen.
