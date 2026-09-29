@@ -104,64 +104,17 @@ Item {
     // Kleur uitsluitend binnen 2 meter van een echte GPS/dieptemeting.
     property real _heatRadiusMeters: 2.0
 
+    // Fixed depth scale shared by renderer and legend; no per-track recolouring.
     function _bathymetryColor(depth) {
-
-        var minD = _bathymetryMinDepth
-
-        var maxD = _bathymetryMaxDepth
-
-        var span = Math.max(0.25, maxD - minD)
-
-        var t = Math.max(0.0, Math.min(1.0, (depth - minD) / span))
-
-
-        var stops = [
-
-            [0.00, 0.90, 0.12, 0.08],
-
-            [0.18, 1.00, 0.45, 0.05],
-
-            [0.36, 1.00, 0.85, 0.08],
-
-            [0.54, 0.15, 0.78, 0.24],
-
-            [0.72, 0.05, 0.72, 0.82],
-
-            [1.00, 0.05, 0.20, 0.92]
-
-        ]
-
-
-        for (var i = 0; i < stops.length - 1; i++) {
-
-            var a = stops[i]
-
-            var b = stops[i + 1]
-
-            if (t >= a[0] && t <= b[0]) {
-
-                var u = (t - a[0]) / Math.max(0.0001, b[0] - a[0])
-
-                return Qt.rgba(
-
-                    a[1] + (b[1] - a[1]) * u,
-
-                    a[2] + (b[2] - a[2]) * u,
-
-                    a[3] + (b[3] - a[3]) * u,
-
-                    1.0
-
-                )
-
-            }
-
-        }
-
-        return Qt.rgba(0.05, 0.20, 0.92, 1.0)
-
+        var stops = [[229,57,53], [251,140,0], [253,216,53],
+                     [67,160,71], [41,182,246], [21,101,192]]
+        var t = Math.max(0, Math.min(5, depth))
+        var i = Math.min(4, Math.floor(t))
+        var u = t - i
+        return Qt.rgba((stops[i][0] + (stops[i+1][0]-stops[i][0])*u)/255,
+                       (stops[i][1] + (stops[i+1][1]-stops[i][1])*u)/255,
+                       (stops[i][2] + (stops[i+1][2]-stops[i][2])*u)/255, 1)
     }
-
 
     function _isContourDepth(depth) {
 
@@ -182,62 +135,18 @@ Item {
         var dx=(lon2-lon1)*_heatLonScale((lat1+lat2)*0.5)
         return Math.sqrt(dx*dx+dy*dy)
     }
+    // The Canvas uses raw samples directly. Do not build an unused second grid.
     function _rebuildHeatmap() {
-        bathymetryHeatCells.clear()
-        if (bathymetrySamples.count < 2) return
-
-        var localMinDepth = 9999.0
-        var localMaxDepth = -9999.0
-        for (var di = 0; di < bathymetrySamples.count; di++) {
-            var dd = bathymetrySamples.get(di).depth
-            localMinDepth = Math.min(localMinDepth, dd)
-            localMaxDepth = Math.max(localMaxDepth, dd)
+        var lo = Infinity, hi = -Infinity
+        for (var i = 0; i < bathymetrySamples.count; i++) {
+            var d = bathymetrySamples.get(i).depth
+            if (!isFinite(d) || d <= 0) continue
+            lo = Math.min(lo, d)
+            hi = Math.max(hi, d)
         }
-
-        if ((localMaxDepth - localMinDepth) < 1.0) {
-            var midDepth = (localMinDepth + localMaxDepth) * 0.5
-            localMinDepth = Math.max(0.0, midDepth - 0.5)
-            localMaxDepth = midDepth + 0.5
-        }
-
-        _bathymetryMinDepth = localMinDepth
-        _bathymetryMaxDepth = localMaxDepth
-
-        var minLat=90, maxLat=-90, minLon=180, maxLon=-180, meanLat=0
-        for (var i=0;i<bathymetrySamples.count;i++) {
-            var q=bathymetrySamples.get(i)
-            minLat=Math.min(minLat,q.latitude); maxLat=Math.max(maxLat,q.latitude)
-            minLon=Math.min(minLon,q.longitude); maxLon=Math.max(maxLon,q.longitude)
-            meanLat+=q.latitude
-        }
-        meanLat/=bathymetrySamples.count
-        var dLat=_heatCellMeters/111320.0
-        var dLon=_heatCellMeters/_heatLonScale(meanLat)
-        var rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
-        var cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
-        // Fijner raster voor vloeiendere kleurbanen; begrensd voor Android-prestaties.
-        var scale=Math.max(1.0,Math.sqrt((rows*cols)/1800.0))
-        dLat*=scale; dLon*=scale
-        rows=Math.max(1,Math.ceil((maxLat-minLat)/dLat)+1)
-        cols=Math.max(1,Math.ceil((maxLon-minLon)/dLon)+1)
-        for (var r=0;r<rows;r++) for (var c=0;c<cols;c++) {
-            var lat=minLat+r*dLat, lon=minLon+c*dLon
-            var sum=0, weights=0, nearby=0, nearest=999999
-            for (var j=0;j<bathymetrySamples.count;j++) {
-                var x=bathymetrySamples.get(j)
-                var d=_heatDistance(lat,lon,x.latitude,x.longitude)
-                nearest=Math.min(nearest,d)
-                if (d<=_heatRadiusMeters) {
-                    var w=1.0/Math.max(1.0,d*d)
-                    sum+=x.depth*w; weights+=w; nearby++
-                }
-            }
-            if (nearby>=1 && nearest<=_heatRadiusMeters && weights>0)
-                bathymetryHeatCells.append({"latitude":lat,"longitude":lon,"depth":sum/weights,"latStep":dLat,"lonStep":dLon})
-        }
+        _bathymetryMinDepth = isFinite(lo) ? lo : 0
+        _bathymetryMaxDepth = isFinite(hi) ? hi : 0
     }
-
-
 
     function _depthColor(depth) {
         if (depth < 1.0) return "#e53935"   // rood
@@ -308,7 +217,7 @@ Item {
             "temperature": _liveWaterTemperature,
             "timestampMs": Date.now()
         })
-        if (bathymetrySamples.count >= 2 && (bathymetrySamples.count % 3) === 0) {
+        if (bathymetrySamples.count > 0) {
             _rebuildHeatmap()
         }
     }
@@ -512,32 +421,31 @@ Item {
             z: 1200
             visible: bathymetrySamples.count > 0
 
-            Row {
+            Column {
                 anchors.centerIn: parent
-                spacing: 3
-                Repeater {
-                    model: [
-                        {t:"<1", c:"#e53935"},
-                        {t:"1-2", c:"#fb8c00"},
-                        {t:"2-3", c:"#fdd835"},
-                        {t:"3-4", c:"#43a047"},
-                        {t:"4-5", c:"#29b6f6"},
-                        {t:"5+", c:"#1565c0"}
-                    ]
-
-                    delegate: Row {
-                        spacing: 1
-                        Rectangle {
-                            width: 8
-                            height: 8
-                            radius: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: modelData.c
-                        }
-                        Text {
-                            text: modelData.t
+                spacing: 2
+                Rectangle {
+                    width: 156
+                    height: 8
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: _bathymetryColor(0) }
+                        GradientStop { position: 0.2; color: _bathymetryColor(1) }
+                        GradientStop { position: 0.4; color: _bathymetryColor(2) }
+                        GradientStop { position: 0.6; color: _bathymetryColor(3) }
+                        GradientStop { position: 0.8; color: _bathymetryColor(4) }
+                        GradientStop { position: 1.0; color: _bathymetryColor(5) }
+                    }
+                }
+                Item {
+                    width: 156; height: 9
+                    Repeater {
+                        model: 6
+                        delegate: Text {
+                            x: Math.max(0, Math.min(156-width, index*31.2-width/2))
+                            text: index === 5 ? "5+ m" : index + " m"
                             color: "white"
-                            font.pixelSize: 7
+                            font.pixelSize: 8
                         }
                     }
                 }
@@ -558,8 +466,8 @@ Item {
             // Doorlopende bathymetrische laag: kleine textuur, expliciete schaal.
             Canvas {
                 id: bathymetrySmoothCanvas
-                width: Math.max(1, Math.ceil(parent.width / 4))
-                height: Math.max(1, Math.ceil(parent.height / 4))
+                width: Math.max(1, Math.ceil(parent.width / 2))
+                height: Math.max(1, Math.ceil(parent.height / 2))
                 transform: Scale {
                     xScale: mapControl.width / bathymetrySmoothCanvas.width
                     yScale: mapControl.height / bathymetrySmoothCanvas.height
@@ -600,8 +508,25 @@ Item {
                         var weights = new Float32Array(cw * ch)
                         var nearest = new Float32Array(cw * ch)
                         var hits = 0
-                        for (var i = 0; i < bathymetrySamples.count; i++) {
-                            var s = bathymetrySamples.get(i)
+                        // Merge exactly coincident positions for painting only.
+                        // Keep their weight/count; never discard raw measurements.
+                        var grouped = {}, positions = []
+                        for (var gi = 0; gi < bathymetrySamples.count; gi++) {
+                            var raw = bathymetrySamples.get(gi)
+                            if (!isFinite(raw.depth) || raw.depth <= 0) continue
+                            var key = raw.latitude + ":" + raw.longitude
+                            if (grouped[key] === undefined) {
+                                grouped[key] = positions.length
+                                positions.push({latitude:raw.latitude, longitude:raw.longitude, total:raw.depth, count:1})
+                            } else {
+                                var existing = positions[grouped[key]]
+                                existing.total += raw.depth
+                                existing.count++
+                            }
+                        }
+                        for (var i = 0; i < positions.length; i++) {
+                            var s = positions[i]
+                            s.depth = s.total / s.count
                             if (!isFinite(s.depth) || s.depth <= 0) continue
                             var p = mapControl.fromCoordinate(QtPositioning.coordinate(s.latitude, s.longitude), false)
                             if (!isFinite(p.x) || !isFinite(p.y)) continue
@@ -617,7 +542,9 @@ Item {
                                     var d = Math.sqrt(dx * dx + dy * dy)
                                     if (d >= radius) continue
                                     var k = py * cw + px
-                                    var w = 1 / Math.max(0.20, d * d)
+                                    // Weight reaches zero smoothly at the 2 m boundary.
+                                    var taper = 1 - (d * d) / (radius * radius)
+                                    var w = s.count * taper * taper / Math.max(0.20, d * d)
                                     if (weights[k] === 0) { nearest[k] = d; hits++ }
                                     else nearest[k] = Math.min(nearest[k], d)
                                     sums[k] += s.depth * w
@@ -625,10 +552,19 @@ Item {
                                 }
                             }
                         }
+                        // Reuse colours instead of rebuilding a palette per pixel.
+                        var palette = []
+                        for (var ci = 0; ci <= 500; ci++) {
+                            var col = _bathymetryColor(ci / 100)
+                            palette.push(col)
+                        }
                         for (var k2 = 0; k2 < weights.length; k2++) {
                             if (weights[k2] === 0) continue
-                            ctx.globalAlpha = 0.74 * Math.min(1, (radius - nearest[k2]) / (radius * 0.22))
-                            ctx.fillStyle = _bathymetryColor(sums[k2] / weights[k2])
+                            var fade = Math.max(0, Math.min(1, (radius-nearest[k2])/(radius*0.35)))
+                            fade = fade * fade * (3 - 2 * fade)
+                            var depth = sums[k2] / weights[k2]
+                            ctx.fillStyle = palette[Math.max(0, Math.min(500, Math.round(depth * 100)))]
+                            ctx.globalAlpha = 0.80 * fade
                             ctx.fillRect(k2 % cw, Math.floor(k2 / cw), 1, 1)
                         }
                         ctx.globalAlpha = 1
@@ -644,7 +580,7 @@ Item {
             // Coalesce requests without postponing forever during movement.
             Timer {
                 id: bathymetrySmoothRefresh
-                interval: 80
+                interval: 32
                 repeat: false
                 function schedule() { if (!running) start() }
                 onTriggered: bathymetrySmoothCanvas.requestPaint()
@@ -764,8 +700,8 @@ Item {
                     }
 
                     Text {
-                        text: "HEAT " + bathymetryHeatCells.count + "   " + _bathymetryMinDepth.toFixed(1) + "-" + _bathymetryMaxDepth.toFixed(1) + "m"
-                        color: bathymetryHeatCells.count > 0 ? "#54d17a" : "#ff5252"
+                        text: "DIEPTE " + _bathymetryMinDepth.toFixed(1) + "–" + _bathymetryMaxDepth.toFixed(1) + " m"
+                        color: bathymetrySamples.count > 0 ? "#54d17a" : "#ff5252"
                         font.bold: true
                         font.pixelSize: 11
                     }
