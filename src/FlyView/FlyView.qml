@@ -555,143 +555,115 @@ Item {
             enabled:                !_is3DMode
             visible:                !_is3DMode
 
-            // Doorlopende bathymetrische laag. De ruwe GPS/dieptemetingen worden
-            // op één lichte Canvas geïnterpoleerd; er zijn geen losse kaartvakjes.
+            // Doorlopende bathymetrische laag: kleine textuur, expliciete schaal.
             Canvas {
                 id: bathymetrySmoothCanvas
-                anchors.fill: parent
+                width: Math.max(1, Math.ceil(parent.width / 4))
+                height: Math.max(1, Math.ceil(parent.height / 4))
+                transform: Scale {
+                    xScale: mapControl.width / bathymetrySmoothCanvas.width
+                    yScale: mapControl.height / bathymetrySmoothCanvas.height
+                }
                 z: 45
                 enabled: false
                 visible: bathymetrySamples.count >= 2
-                opacity: 1.0
-                antialiasing: true
                 smooth: true
-                renderTarget: Canvas.FramebufferObject
-                renderStrategy: Canvas.Cooperative
-
-                // Een kwart van de schermresolutie houdt Android soepel.
-                // Qt schaalt deze ene textuur vloeiend naar het kaartscherm.
-                canvasSize: Qt.size(Math.max(120, Math.ceil(width / 4)),
-                                    Math.max(80, Math.ceil(height / 4)))
-
+                renderTarget: Canvas.Image
+                renderStrategy: Canvas.Immediate
+                property string renderStatus: "WACHT OP DATA"
+                onAvailableChanged: if (available) requestPaint()
+                onVisibleChanged: if (visible) requestPaint()
                 onWidthChanged: requestPaint()
                 onHeightChanged: requestPaint()
 
                 onPaint: {
                     var ctx = getContext("2d")
-                    var cw = canvasSize.width
-                    var ch = canvasSize.height
-                    ctx.clearRect(0, 0, cw, ch)
-
-                    if (bathymetrySamples.count < 2 || width < 2 || height < 2)
-                        return
-
-                    var centre = mapControl.center
-                    if (!centre || !centre.isValid)
-                        return
-
-                    // Bepaal hoeveel schermpixels één meter op het huidige zoomniveau is.
-                    var centrePoint = mapControl.fromCoordinate(centre, false)
-                    var northOneMeter = QtPositioning.coordinate(centre.latitude + (1.0 / 111320.0), centre.longitude)
-                    var northPoint = mapControl.fromCoordinate(northOneMeter, false)
-                    var pixelsPerMeter = Math.abs(northPoint.y - centrePoint.y)
-                    if (!isFinite(pixelsPerMeter) || pixelsPerMeter < 0.01)
-                        return
-
-                    var scaleX = cw / width
-                    var scaleY = ch / height
-                    var lowPixelsPerMeter = pixelsPerMeter * ((scaleX + scaleY) * 0.5)
-                    var radiusLow = Math.max(1.0, _heatRadiusMeters * lowPixelsPerMeter)
-                    var samples = []
-                    var minX = cw
-                    var minY = ch
-                    var maxX = 0
-                    var maxY = 0
-
-                    for (var si = 0; si < bathymetrySamples.count; si++) {
-                        var sample = bathymetrySamples.get(si)
-                        var point = mapControl.fromCoordinate(
-                                    QtPositioning.coordinate(sample.latitude, sample.longitude), false)
-                        var lx = point.x * scaleX
-                        var ly = point.y * scaleY
-                        if (lx < -radiusLow || lx > cw + radiusLow ||
-                                ly < -radiusLow || ly > ch + radiusLow)
-                            continue
-
-                        samples.push({"x": lx, "y": ly, "depth": sample.depth})
-                        minX = Math.min(minX, lx - radiusLow)
-                        minY = Math.min(minY, ly - radiusLow)
-                        maxX = Math.max(maxX, lx + radiusLow)
-                        maxY = Math.max(maxY, ly + radiusLow)
-                    }
-
-                    if (samples.length === 0)
-                        return
-
-                    var startX = Math.max(0, Math.floor(minX))
-                    var startY = Math.max(0, Math.floor(minY))
-                    var endX = Math.min(cw - 1, Math.ceil(maxX))
-                    var endY = Math.min(ch - 1, Math.ceil(maxY))
-                    var radiusMeters = _heatRadiusMeters
-                    var featherStart = radiusMeters * 0.78
-
-                    for (var py = startY; py <= endY; py++) {
-                        for (var px = startX; px <= endX; px++) {
-                            var sum = 0.0
-                            var weights = 0.0
-                            var nearest = 999999.0
-
-                            for (var sj = 0; sj < samples.length; sj++) {
-                                var dx = px + 0.5 - samples[sj].x
-                                var dy = py + 0.5 - samples[sj].y
-                                var distanceMeters = Math.sqrt(dx * dx + dy * dy) / lowPixelsPerMeter
-                                if (distanceMeters > radiusMeters)
-                                    continue
-
-                                nearest = Math.min(nearest, distanceMeters)
-                                var weight = 1.0 / Math.max(0.20, distanceMeters * distanceMeters)
-                                sum += samples[sj].depth * weight
-                                weights += weight
+                    if (!ctx) { renderStatus = "WACHT OP CANVAS"; return }
+                    ctx.clearRect(0, 0, width, height)
+                    renderStatus = "WACHT OP DATA"
+                    if (bathymetrySamples.count < 2) return
+                    try {
+                        if (!mapControl.mapReady) { renderStatus = "WACHT OP KAART"; return }
+                        var centre = mapControl.center
+                        var origin = mapControl.fromCoordinate(centre, false)
+                        var north = mapControl.fromCoordinate(centre.atDistanceAndAzimuth(1, 0), false)
+                        var mx = north.x - origin.x
+                        var my = north.y - origin.y
+                        var ppm = Math.sqrt(mx * mx + my * my)
+                        if (!isFinite(ppm) || ppm <= 0) { renderStatus = "GEEN PROJECTIE"; return }
+                        var cw = Math.ceil(width), ch = Math.ceil(height)
+                        var sx = mapControl.width / cw, sy = mapControl.height / ch
+                        var radius = _heatRadiusMeters
+                        var rx = radius * ppm / sx, ry = radius * ppm / sy
+                        // Sample-first accumulation: only visit pixels near measurements.
+                        var sums = new Float32Array(cw * ch)
+                        var weights = new Float32Array(cw * ch)
+                        var nearest = new Float32Array(cw * ch)
+                        var hits = 0
+                        for (var i = 0; i < bathymetrySamples.count; i++) {
+                            var s = bathymetrySamples.get(i)
+                            if (!isFinite(s.depth) || s.depth <= 0) continue
+                            var p = mapControl.fromCoordinate(QtPositioning.coordinate(s.latitude, s.longitude), false)
+                            if (!isFinite(p.x) || !isFinite(p.y)) continue
+                            var x = p.x / sx, y = p.y / sy
+                            var x0 = Math.max(0, Math.floor(x - rx))
+                            var x1 = Math.min(cw - 1, Math.ceil(x + rx))
+                            var y0 = Math.max(0, Math.floor(y - ry))
+                            var y1 = Math.min(ch - 1, Math.ceil(y + ry))
+                            for (var py = y0; py <= y1; py++) {
+                                for (var px = x0; px <= x1; px++) {
+                                    var dx = (px + 0.5 - x) * sx / ppm
+                                    var dy = (py + 0.5 - y) * sy / ppm
+                                    var d = Math.sqrt(dx * dx + dy * dy)
+                                    if (d >= radius) continue
+                                    var k = py * cw + px
+                                    var w = 1 / Math.max(0.20, d * d)
+                                    if (weights[k] === 0) { nearest[k] = d; hits++ }
+                                    else nearest[k] = Math.min(nearest[k], d)
+                                    sums[k] += s.depth * w
+                                    weights[k] += w
+                                }
                             }
-
-                            if (weights <= 0.0)
-                                continue
-
-                            var alpha = 0.74
-                            if (nearest > featherStart) {
-                                var fade = (radiusMeters - nearest) /
-                                           Math.max(0.01, radiusMeters - featherStart)
-                                alpha *= Math.max(0.0, Math.min(1.0, fade))
-                            }
-
-                            ctx.globalAlpha = alpha
-                            ctx.fillStyle = _bathymetryColor(sum / weights)
-                            ctx.fillRect(px, py, 1.15, 1.15)
                         }
+                        for (var k2 = 0; k2 < weights.length; k2++) {
+                            if (weights[k2] === 0) continue
+                            ctx.globalAlpha = 0.74 * Math.min(1, (radius - nearest[k2]) / (radius * 0.22))
+                            ctx.fillStyle = _bathymetryColor(sums[k2] / weights[k2])
+                            ctx.fillRect(k2 % cw, Math.floor(k2 / cw), 1, 1)
+                        }
+                        ctx.globalAlpha = 1
+                        renderStatus = hits > 0 ? "GETEKEND" : "BUITEN BEELD / ZOOM IN"
+                    } catch (error) {
+                        ctx.globalAlpha = 1
+                        renderStatus = "TEKENFOUT"
+                        console.warn("Carpcatcher bathymetry:", error)
                     }
-                    ctx.globalAlpha = 1.0
                 }
             }
 
-            // Vernieuw na iedere interne heatmap-update (iedere drie meetpunten).
-            Connections {
-                target: bathymetryHeatCells
-                function onCountChanged() { bathymetrySmoothRefresh.restart() }
-            }
-
+            // Coalesce requests without postponing forever during movement.
             Timer {
                 id: bathymetrySmoothRefresh
-                interval: 120
+                interval: 80
                 repeat: false
+                function schedule() { if (!running) start() }
                 onTriggered: bathymetrySmoothCanvas.requestPaint()
             }
-
-            // Houd de laag geografisch gelijk met de kaart tijdens navigeren.
+            Connections {
+                target: bathymetrySamples
+                function onCountChanged() { bathymetrySmoothRefresh.schedule() }
+            }
+            Connections {
+                target: bathymetryHeatCells
+                function onCountChanged() { bathymetrySmoothRefresh.schedule() }
+            }
             Connections {
                 target: mapControl
-                function onCenterChanged() { bathymetrySmoothRefresh.restart() }
-                function onZoomLevelChanged() { bathymetrySmoothRefresh.restart() }
-                function onBearingChanged() { bathymetrySmoothRefresh.restart() }
+                function onMapReadyChanged() { bathymetrySmoothRefresh.schedule() }
+                function onCenterChanged() { bathymetrySmoothRefresh.schedule() }
+                function onZoomLevelChanged() { bathymetrySmoothRefresh.schedule() }
+                function onBearingChanged() { bathymetrySmoothRefresh.schedule() }
+                function onTiltChanged() { bathymetrySmoothRefresh.schedule() }
             }
 
             // Eén actueel GPS-punt; de volledige historische meetroute blijft verborgen.
@@ -799,7 +771,7 @@ Item {
                     }
 
                     Text {
-                        text: _bathymetryRecording ? "OPNAME AAN" : "OPNAME UIT"
+                        text: (_bathymetryRecording ? "REC • " : "STOP • ") + bathymetrySmoothCanvas.renderStatus
                         color: _bathymetryRecording ? "#54d17a" : "#aab6c0"
                         font.pixelSize: 10
                     }
