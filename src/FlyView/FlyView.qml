@@ -893,7 +893,7 @@ Item {
     }
 
     // ---------------------------------------------------------------------
-    // CARPCATCHER SONAR — self-contained simulator until Kogger is connected
+    // CARPCATCHER SONAR — rolling echogram, ready for a Kogger data bridge
     // ---------------------------------------------------------------------
     Rectangle {
         id: sonarPanel
@@ -905,61 +905,117 @@ Item {
         height: _carpcatcherSonarHeight
         visible: _carpcatcherShowSonar && height > 0
         z: QGroundControl.zOrderWidgets + 3
-        color: "#070b0f"
-        border.color: "#2a323a"
+        color: "#03101d"
+        border.color: "#27465d"
         border.width: 1
         clip: true
 
-        property real simulatedDepth: 4.82
-        property real simulatedTemperature: 16.8
-        property int simulatedSignal: 92
+        property bool demoMode: true
+        property bool paused: false
+        property real currentDepth: 4.82
+        property real waterTemperature: 16.8
+        property int signalStrength: 92
         property int rangeMeters: 6
         property int gainValue: 70
         property bool filterEnabled: true
         property real phase: 0
+        property int sequence: 0
+        property var history: []
+        property int historyLimit: 520
 
-        Timer {
-            interval: 160
-            repeat: true
-            running: sonarPanel.visible
-            onTriggered: {
-                sonarPanel.phase += 0.06
-                sonarPanel.simulatedDepth = 4.75 + Math.sin(sonarPanel.phase * 0.55) * 0.07
-                sonarCanvas.requestPaint()
-            }
+        // This is the single input for both demo and future Kogger samples.
+        // targets is an array containing target depths in metres.
+        function ingestSample(depth, temperature, signal, targets) {
+            if (!isFinite(depth) || depth <= 0) return
+            currentDepth = depth
+            waterTemperature = isFinite(temperature) ? temperature : waterTemperature
+            signalStrength = Math.max(0, Math.min(100, isFinite(signal) ? signal : signalStrength))
+            _liveDepthMeters = currentDepth
+            _liveWaterTemperature = waterTemperature
+
+            var next = history.slice(0)
+            next.push({
+                depth: currentDepth,
+                strength: signalStrength,
+                targets: targets || [],
+                sequence: sequence++
+            })
+            if (next.length > historyLimit)
+                next.splice(0, next.length - historyLimit)
+            history = next
+            sonarCanvas.requestPaint()
         }
 
-        // Top information overlay
+        function addDemoSample() {
+            phase += 0.115
+            var bottom = 4.15
+                       + Math.sin(phase * 0.45) * 0.24
+                       + Math.sin(phase * 0.13) * 0.16
+            var trenchDistance = Math.abs((sequence % 260) - 150)
+            if (trenchDistance < 34)
+                bottom += (1.0 - trenchDistance / 34.0) * 0.55
+
+            var targets = []
+            var cycle = sequence % 210
+            if (cycle >= 28 && cycle <= 42)
+                targets.push(1.65 + Math.abs(cycle - 35) * 0.035)
+            if (cycle >= 92 && cycle <= 104)
+                targets.push(2.55 + Math.abs(cycle - 98) * 0.045)
+            if (cycle >= 154 && cycle <= 172)
+                targets.push(1.05 + Math.abs(cycle - 163) * 0.028)
+
+            ingestSample(bottom, 16.8 + Math.sin(phase * 0.08) * 0.1,
+                         90 + Math.round(Math.sin(phase * 0.31) * 4), targets)
+        }
+
+        function resetDemo() {
+            history = []
+            phase = 0
+            sequence = 0
+            for (var i = 0; i < 260; i++) addDemoSample()
+        }
+
+        Component.onCompleted: resetDemo()
+
+        Timer {
+            interval: 120
+            repeat: true
+            running: sonarPanel.visible && sonarPanel.demoMode && !sonarPanel.paused
+            onTriggered: sonarPanel.addDemoSample()
+        }
+
         Rectangle {
             id: sonarInfoBar
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            height: Math.max(30, parent.height * 0.12)
-            color: "#d910151b"
+            height: Math.max(32, parent.height * 0.13)
+            color: "#e6071724"
+            border.color: "#27465d"
+            border.width: 1
             z: 3
 
             Row {
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Math.max(12, parent.width * 0.04)
+                spacing: Math.max(10, parent.width * 0.035)
 
                 Text {
-                    text: sonarPanel.simulatedDepth.toFixed(2) + " m"
+                    text: sonarPanel.currentDepth.toFixed(2) + " m"
                     color: "white"
                     font.bold: true
-                    font.pixelSize: Math.max(14, sonarInfoBar.height * 0.48)
+                    font.pixelSize: Math.max(14, sonarInfoBar.height * 0.46)
                 }
                 Text {
-                    text: sonarPanel.simulatedTemperature.toFixed(1) + "°C"
-                    color: "#d7e2eb"
-                    font.pixelSize: Math.max(11, sonarInfoBar.height * 0.38)
+                    text: sonarPanel.waterTemperature.toFixed(1) + "°C"
+                    color: "#bfe5ff"
+                    font.pixelSize: Math.max(10, sonarInfoBar.height * 0.34)
                 }
                 Text {
-                    text: "SIG " + sonarPanel.simulatedSignal + "%"
-                    color: "#d7e2eb"
-                    font.pixelSize: Math.max(11, sonarInfoBar.height * 0.38)
+                    text: "SIG " + sonarPanel.signalStrength + "%"
+                    color: sonarPanel.signalStrength >= 65 ? "#7ee7a3" : "#ffb25c"
+                    font.pixelSize: Math.max(10, sonarInfoBar.height * 0.34)
                 }
             }
 
@@ -967,19 +1023,18 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: simText.width + 12
-                height: Math.max(20, sonarInfoBar.height * 0.62)
+                width: modeText.width + 16
+                height: Math.max(21, sonarInfoBar.height * 0.62)
                 radius: 4
-                color: "#222b35"
-                border.color: "#ff7a00"
-
+                color: sonarPanel.demoMode ? "#253341" : "#183d2b"
+                border.color: sonarPanel.demoMode ? "#ff8b28" : "#58d78a"
                 Text {
-                    id: simText
+                    id: modeText
                     anchors.centerIn: parent
-                    text: "SIM"
-                    color: "#ff9b42"
+                    text: sonarPanel.demoMode ? "SONAR DEMO" : "KOGGER LIVE"
+                    color: sonarPanel.demoMode ? "#ffad66" : "#78efa5"
                     font.bold: true
-                    font.pixelSize: Math.max(9, sonarInfoBar.height * 0.30)
+                    font.pixelSize: Math.max(9, sonarInfoBar.height * 0.28)
                 }
             }
         }
@@ -991,105 +1046,105 @@ Item {
             anchors.top: sonarInfoBar.bottom
             anchors.bottom: sonarControlBar.top
             antialiasing: true
+            renderTarget: Canvas.Image
+            renderStrategy: Canvas.Immediate
+
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
 
             onPaint: {
                 var ctx = getContext("2d")
                 ctx.reset()
-
-                var w = width
-                var h = height
+                var w = width, h = height
                 if (w <= 1 || h <= 1) return
 
-                // Dark echogram background
-                var grd = ctx.createLinearGradient(0, 0, 0, h)
-                grd.addColorStop(0.0, "#081018")
-                grd.addColorStop(0.55, "#0a1520")
-                grd.addColorStop(1.0, "#0c1117")
-                ctx.fillStyle = grd
+                var water = ctx.createLinearGradient(0, 0, 0, h)
+                water.addColorStop(0.0, "#020915")
+                water.addColorStop(0.42, "#062641")
+                water.addColorStop(1.0, "#084f78")
+                ctx.fillStyle = water
                 ctx.fillRect(0, 0, w, h)
 
-                // Horizontal depth grid
+                var range = Math.max(1, sonarPanel.rangeMeters)
                 ctx.lineWidth = 1
-                ctx.strokeStyle = "#26323d"
-                ctx.fillStyle = "#8fa0ad"
-                ctx.font = Math.max(9, h * 0.07) + "px sans-serif"
-
-                var r = Math.max(1, sonarPanel.rangeMeters)
-                for (var m = 1; m <= r; m++) {
-                    var gy = (m / r) * h
-                    ctx.beginPath()
-                    ctx.moveTo(0, gy)
-                    ctx.lineTo(w, gy)
-                    ctx.stroke()
-                    if (m < r) {
-                        ctx.fillText(m + "m", w - 30, Math.max(10, gy - 3))
+                ctx.font = Math.max(9, h * 0.058) + "px sans-serif"
+                for (var metre = 1; metre <= range; metre++) {
+                    var gy = metre / range * h
+                    ctx.strokeStyle = metre % 2 === 0 ? "rgba(120,193,232,0.25)" : "rgba(120,193,232,0.13)"
+                    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke()
+                    if (metre < range) {
+                        ctx.fillStyle = "rgba(198,228,244,0.72)"
+                        ctx.fillText(metre + "m", 6, Math.max(11, gy - 3))
                     }
                 }
 
-                // A changing bottom profile with a clearly visible trench.
-                function depthAt(nx) {
-                    var base = 0.69
-                    var wave = Math.sin(nx * 10.0 + sonarPanel.phase * 0.35) * 0.018
-                    var trench = 0
-                    var center = 0.60
-                    var d = Math.abs(nx - center)
-                    if (d < 0.16) {
-                        trench = (1.0 - d / 0.16) * 0.12
-                    }
-                    var rise = nx > 0.80 ? -(nx - 0.80) * 0.20 : 0
-                    return Math.min(0.91, Math.max(0.45, base + wave + trench + rise))
-                }
+                var data = sonarPanel.history
+                if (!data || data.length < 2) return
+                var visibleCount = Math.min(data.length, Math.max(90, Math.floor(w / 2)))
+                var first = data.length - visibleCount
+                var stepX = w / Math.max(1, visibleCount - 1)
+                function yForDepth(depth) { return Math.max(0, Math.min(h, depth / range * h)) }
 
-                // Soft return / bottom body
+                // Bottom fill: the newest echo is always at the right edge.
                 ctx.beginPath()
                 ctx.moveTo(0, h)
-                for (var x = 0; x <= w; x += 3) {
-                    var nx = x / w
-                    var by = depthAt(nx) * h
-                    ctx.lineTo(x, by)
+                for (var i = 0; i < visibleCount; i++) {
+                    var sample = data[first + i]
+                    var bx = i * stepX
+                    var by = yForDepth(sample.depth)
+                    if (i === 0) ctx.lineTo(bx, by); else ctx.lineTo(bx, by)
                 }
-                ctx.lineTo(w, h)
-                ctx.closePath()
+                ctx.lineTo(w, h); ctx.closePath()
+                var ground = ctx.createLinearGradient(0, h * 0.45, 0, h)
+                ground.addColorStop(0.0, "#ffb13b")
+                ground.addColorStop(0.10, "#d9661e")
+                ground.addColorStop(0.38, "#71351d")
+                ground.addColorStop(1.0, "#211713")
+                ctx.fillStyle = ground; ctx.fill()
 
-                var bottomGradient = ctx.createLinearGradient(0, h * 0.52, 0, h)
-                bottomGradient.addColorStop(0.0, "#7a3515")
-                bottomGradient.addColorStop(0.45, "#4b2a1c")
-                bottomGradient.addColorStop(1.0, "#1d1715")
-                ctx.fillStyle = bottomGradient
-                ctx.fill()
-
-                // Strong blue detected bottom line
-                ctx.beginPath()
-                for (var bx = 0; bx <= w; bx += 2) {
-                    var bnx = bx / w
-                    var bly = depthAt(bnx) * h
-                    if (bx === 0) ctx.moveTo(bx, bly)
-                    else ctx.lineTo(bx, bly)
-                }
-                ctx.strokeStyle = "#21a9ff"
-                ctx.lineWidth = Math.max(2, h * 0.012)
-                ctx.stroke()
-
-                // Fish/target arches
-                function drawArch(cx, cy, rx, ry, alpha) {
+                // Layered return makes soft/hard bottom immediately readable.
+                for (var pass = 0; pass < 3; pass++) {
                     ctx.beginPath()
-                    ctx.arc(cx, cy, rx, Math.PI * 1.08, Math.PI * 1.92, false)
-                    ctx.strokeStyle = "rgba(255,122,0," + alpha + ")"
-                    ctx.lineWidth = Math.max(1.5, h * 0.009)
+                    for (var j = 0; j < visibleCount; j++) {
+                        var lineSample = data[first + j]
+                        var lx = j * stepX
+                        var ly = yForDepth(lineSample.depth) + pass * 1.5
+                        if (j === 0) ctx.moveTo(lx, ly); else ctx.lineTo(lx, ly)
+                    }
+                    ctx.strokeStyle = pass === 0 ? "#fff06a" : (pass === 1 ? "#ff9b24" : "rgba(255,74,24,0.70)")
+                    ctx.lineWidth = pass === 0 ? Math.max(1.5, h * 0.009) : Math.max(1, h * 0.007)
                     ctx.stroke()
                 }
 
-                drawArch(w * 0.18, h * 0.36, w * 0.025, h * 0.07, 0.86)
-                drawArch(w * 0.39, h * 0.47, w * 0.018, h * 0.05, 0.72)
-                drawArch(w * 0.76, h * 0.31, w * 0.028, h * 0.075, 0.90)
-
-                // Some faint suspended returns
-                ctx.fillStyle = "rgba(255,180,70,0.18)"
-                for (var p = 0; p < 18; p++) {
-                    var px = ((p * 71 + Math.floor(sonarPanel.phase * 9)) % 997) / 997 * w
-                    var py = (0.15 + ((p * 37) % 43) / 100) * h
-                    ctx.fillRect(px, py, 2, 2)
+                // Real fish targets arrive as depths. Consecutive returns form arches.
+                var fishAlpha = 0.38 + sonarPanel.gainValue / 150.0
+                for (var k = 0; k < visibleCount; k++) {
+                    var echo = data[first + k]
+                    if (!echo.targets) continue
+                    for (var t = 0; t < echo.targets.length; t++) {
+                        var fx = k * stepX
+                        var fy = yForDepth(echo.targets[t])
+                        var glow = Math.max(2, stepX * 1.7)
+                        ctx.fillStyle = "rgba(255,220,55," + Math.min(0.95, fishAlpha) + ")"
+                        ctx.fillRect(fx - glow * 0.5, fy - 1.5, glow, 3)
+                        ctx.fillStyle = "rgba(255,91,24,0.80)"
+                        ctx.fillRect(fx - Math.max(1, stepX * 0.3), fy - 1, Math.max(2, stepX * 0.6), 2)
+                    }
                 }
+
+                if (!sonarPanel.filterEnabled) {
+                    ctx.fillStyle = "rgba(110,208,255,0.20)"
+                    for (var n = 0; n < 55; n++) {
+                        var nx = (n * 67 + sonarPanel.sequence * 3) % Math.max(1, Math.floor(w))
+                        var ny = (n * 43 + sonarPanel.sequence) % Math.max(1, Math.floor(h * 0.66))
+                        ctx.fillRect(nx, ny, 2, 2)
+                    }
+                }
+
+                // Right-hand live cursor.
+                ctx.strokeStyle = "rgba(109,221,255,0.75)"
+                ctx.lineWidth = 1
+                ctx.beginPath(); ctx.moveTo(w - 1, 0); ctx.lineTo(w - 1, h); ctx.stroke()
             }
         }
 
@@ -1098,9 +1153,9 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            height: Math.max(30, parent.height * 0.13)
-            color: "#10151b"
-            border.color: "#2a323a"
+            height: Math.max(32, parent.height * 0.14)
+            color: "#08131d"
+            border.color: "#27465d"
             border.width: 1
             z: 4
 
@@ -1109,67 +1164,40 @@ Item {
                 anchors.margins: 4
                 spacing: 4
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 4
-                    color: "#1b232c"
-                    border.color: "#3b4651"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "RANGE " + sonarPanel.rangeMeters + "m"
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: Math.max(9, parent.height * 0.32)
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            sonarPanel.rangeMeters = sonarPanel.rangeMeters === 6 ? 10 :
-                                                     (sonarPanel.rangeMeters === 10 ? 20 : 6)
-                            sonarCanvas.requestPaint()
+                Repeater {
+                    model: [
+                        { label: "RANGE", value: sonarPanel.rangeMeters + "m" },
+                        { label: "GAIN", value: sonarPanel.gainValue },
+                        { label: "FILTER", value: sonarPanel.filterEnabled ? "AAN" : "UIT" },
+                        { label: sonarPanel.paused ? "START" : "PAUZE", value: "" }
+                    ]
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 4
+                        color: (index === 2 && sonarPanel.filterEnabled) ? "#123426" : "#142331"
+                        border.color: (index === 2 && sonarPanel.filterEnabled) ? "#49c779" : "#38536a"
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.value === "" ? modelData.label : modelData.label + " " + modelData.value
+                            color: "white"
+                            font.bold: true
+                            font.pixelSize: Math.max(8, parent.height * 0.27)
                         }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 4
-                    color: "#1b232c"
-                    border.color: "#3b4651"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "GAIN " + sonarPanel.gainValue
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: Math.max(9, parent.height * 0.32)
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            sonarPanel.gainValue = sonarPanel.gainValue === 70 ? 90 :
-                                                   (sonarPanel.gainValue === 90 ? 50 : 70)
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (index === 0)
+                                    sonarPanel.rangeMeters = sonarPanel.rangeMeters === 6 ? 10 : (sonarPanel.rangeMeters === 10 ? 20 : 6)
+                                else if (index === 1)
+                                    sonarPanel.gainValue = sonarPanel.gainValue === 70 ? 90 : (sonarPanel.gainValue === 90 ? 50 : 70)
+                                else if (index === 2)
+                                    sonarPanel.filterEnabled = !sonarPanel.filterEnabled
+                                else
+                                    sonarPanel.paused = !sonarPanel.paused
+                                sonarCanvas.requestPaint()
+                            }
                         }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 4
-                    color: sonarPanel.filterEnabled ? "#173224" : "#1b232c"
-                    border.color: sonarPanel.filterEnabled ? "#49b86e" : "#3b4651"
-                    Text {
-                        anchors.centerIn: parent
-                        text: sonarPanel.filterEnabled ? "FILTER AAN" : "FILTER UIT"
-                        color: "white"
-                        font.bold: true
-                        font.pixelSize: Math.max(9, parent.height * 0.32)
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: sonarPanel.filterEnabled = !sonarPanel.filterEnabled
                     }
                 }
             }
